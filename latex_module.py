@@ -18,9 +18,9 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool:
 
     if 'latex' in expr:
         expr = expr.replace('latex', '', 1)
-        # expr = expr.replace(r'\maketitle', "")
-        # expr = expr.replace(r'\author', r'\bf')
-        # expr = expr.replace(r'\title', r'\bf')
+        expr = expr.replace(r'\maketitle', "")
+        expr = expr.replace(r'\author', r'\bf')
+        expr = expr.replace(r'\title', r'\bf')
 
     # set preamble for Latex
 
