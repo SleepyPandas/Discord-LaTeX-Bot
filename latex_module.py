@@ -1,4 +1,4 @@
-from sympy import symbols, Eq, preview
+from sympy import preview
 
 
 def text_to_latex(expr: str, output_file: str, dpi=300) -> bool:

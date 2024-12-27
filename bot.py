@@ -2,7 +2,7 @@ import os
 import discord
 import uuid
 from discord import app_commands
-
+from discord import Color
 from latex_module import *
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -35,13 +35,13 @@ async def hello(interaction: discord.Interaction):
 
 
 # noinspection PyUnresolvedReferences
-@client.tree.command(name="latex", description='test')
+@client.tree.command(name="latex", description='Complies Latex Code ~ in standalone Class')
 @app_commands.user_install()
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-async def latex(interaction: discord.Interaction, what: str):
+async def latex(interaction: discord.Interaction, latex_code: str):
     # noinspection PyUnresolvedReferences
 
-    message_content = what
+    message_content = latex_code
     message_id = str(uuid.uuid4())
     unique_id = message_id[7:14]
 
@@ -55,22 +55,21 @@ async def latex(interaction: discord.Interaction, what: str):
 
 
 # noinspection PyUnresolvedReferences
-@client.tree.command(name="help", description='test')
+@client.tree.command(name="help", description='See Features and Commands')
 @app_commands.user_install()
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-async def _help(interaction: discord.Interaction):
-    help_text = (">>>"
-                 "Hello! I'm LaTeX Bot 🤖. I can convert your LaTeX code into PNG images"
-                 "To use me type 'latex' followed by your LaTeX code.")
-    await interaction.response.send_message(help_text, ephemeral=True, silent=True)
+async def help(interaction: discord.Interaction):
+    name = "laTeX_Bot"
+    pfp = None
 
+    embed = discord.Embed(title="Help!", description="Commands and Features", color=Color.orange())
+    embed.set_author(name=name)
+    embed.set_thumbnail(url=pfp)
+    embed.add_field(name="", value="Hello!,  I'm LaTeX Bot 🤖. I can convert your LaTeX code "
+                                   "into PNG images To use me type 'latex' followed by your LaTeX code.")
 
-@client.command(name='help')
-async def _help(ctx):
-    help_text = (">>>"
-                 "Hello! I'm LaTeX Bot 🤖. I can convert your LaTeX code into PNG images"
-                 "To use me type 'latex' followed by your LaTeX code.")
-    await ctx.send(help_text)
+    embed.set_footer(text=f"created by {name}")
+    await interaction.response.send_message(embed=embed, ephemeral=False, silent=True)
 
 
 # ===== EVENTS =====
