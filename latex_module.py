@@ -1,7 +1,9 @@
+import re
+
 from sympy import preview
 
 
-def text_to_latex(expr: str, output_file: str, dpi=300) -> bool:
+def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     """
     Converts a text to LaTeX png
     returning True if it succeeds, False otherwise.
@@ -24,7 +26,7 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool:
 
     # set preamble for Latex
 
-    extra_preamble = "\\usepackage{xcolor, pagecolor}\n" \
+    extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
                      "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
                      "\\color{customtext}"
 
@@ -49,4 +51,20 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool:
         return True
     except Exception as e:
         print(f'Failed to convert text to LaTeX: {e}')
-        return False
+        error_log = str(e)
+        error = find_latex_error(error_log)
+        if error:
+            return error
+        else:
+            return False
+
+
+def find_latex_error(error_log: str) -> str:
+    error_log = error_log.replace("\\r\\n", "\n")
+    for line in error_log.splitlines():
+        # Strip leading/trailing whitespace
+        stripped_line = line.strip()
+        # Check if it starts with '!' and ends with '.'
+        if stripped_line.startswith('!') and stripped_line.endswith('.'):
+            return stripped_line
+    return ""
