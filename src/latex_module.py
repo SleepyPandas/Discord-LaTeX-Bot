@@ -25,9 +25,11 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
 
     # set preamble for Latex
 
-    extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
+    extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm, tikz}\n" \
                      "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                     "\\color{customtext}"
+                     "\\color{customtext}" \
+                     "\\usepackage[active,tightpage]{preview}" \
+                     "\\PreviewEnvironment{tikzpicture}"
 
     # Set custom name for file
     output_file = f"{output_file}.png"
@@ -54,6 +56,7 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
             return error
         else:
             return "Failed to Compile Unknown Error 💀💀💀"
+
 
 def find_latex_error(error_log: str | Exception | bytes) -> str:
     if isinstance(error_log, Exception):
