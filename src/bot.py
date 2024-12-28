@@ -1,3 +1,4 @@
+import asyncio
 import os
 import discord
 import uuid
@@ -74,6 +75,9 @@ async def ping(interaction: discord.Interaction):
 @app_commands.user_install()
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def latex(interaction: discord.Interaction, latex_code: str):
+
+    await interaction.response.defer(thinking=True)
+
     message_content = latex_code
     message_id = str(uuid.uuid4())
     unique_id = message_id[7:14]
@@ -81,7 +85,7 @@ async def latex(interaction: discord.Interaction, latex_code: str):
     output = text_to_latex(message_content, unique_id)
 
     if output is True:
-        await interaction.response.send_message(file=discord.File(f'{unique_id}.png'), silent=True)
+        await interaction.followup.send(file=discord.File(f'{unique_id}.png'), silent=True)
         # remove extra files after | Clears buffer
         os.remove(f'{unique_id}.png')
     else:

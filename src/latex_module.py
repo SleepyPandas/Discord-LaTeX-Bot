@@ -1,10 +1,8 @@
-import re
 from typing import Union
-
 from sympy import preview
 
 
-def text_to_latex(expr: str, output_file: str, dpi=250) -> Union[bool, str]:
+def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
     """
     Converts a text to LaTeX png
     returning True if it succeeds, False otherwise.
@@ -29,10 +27,7 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> Union[bool, str]:
 
     extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm, tikz}\n" \
                      "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                     "\\color{customtext}\n" \
-                     "\\usepackage[active,tightpage]{preview}\n" \
-                     "\\PreviewEnvironment{tikzpicture}\n" \
-                     "\\setlength\\PreviewBorder{2mm}"
+                     "\\color{customtext}"
 
     # Set custom name for file
     output_file = f"{output_file}.png"
@@ -47,7 +42,6 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> Union[bool, str]:
                 dvioptions=[
                     '-D', str(dpi),
                     '-bg', 'Transparent'
-
                 ],
                 extra_preamble=extra_preamble,
                 # document=False
@@ -55,7 +49,6 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> Union[bool, str]:
         return True
     except Exception as log:
         print(f'Failed to convert text to LaTeX: {log}')
-
         error = find_latex_error(log)
         if error:
             return error
