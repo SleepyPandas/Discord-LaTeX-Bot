@@ -69,7 +69,7 @@ async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("PONGGGGGGG!!!!")
 
 
-# noinspection PyUnresolvedReference
+# noinspection PyUnresolvedReferences
 # for send_message pycharm doesn't recognize it but method exists
 @client.tree.command(name="latex", description='Complies Latex Code ~ in standalone Class')
 @app_commands.user_install()
@@ -82,13 +82,13 @@ async def latex(interaction: discord.Interaction, latex_code: str):
     unique_id = message_id[7:14]
     loop = asyncio.get_running_loop()
 
-    output = text_to_latex(message_content, unique_id)
+    # output = text_to_latex(message_content, unique_id)
 
-    # Set a timeout of 3 seconds
+    # Set a timeout of 5 seconds
     try:
         output = await asyncio.wait_for(
             loop.run_in_executor(None, text_to_latex, latex_code, unique_id),
-            timeout=3.0  # Timeout in seconds
+            timeout=5.0  # Timeout in seconds
         )
     except asyncio.TimeoutError:
         # Handle the timeout case
@@ -102,14 +102,15 @@ async def latex(interaction: discord.Interaction, latex_code: str):
         return
 
     if output is True:
-        await asyncio.sleep(1)
-        await interaction.followup.send(file=discord.File(f'{unique_id}.png'), silent=True)
+        # await interaction.response.send_message(file=discord.File(f'{unique_id}.png'), silent=True)
+        await interaction.followup.send(file=discord.File(f'{unique_id}.png'))
 
         # remove extra files after | Clears buffer
         os.remove(f'{unique_id}.png')
     else:
         embed = discord.Embed(title="Compilation Error", description=output, color=Color.red())
-        await interaction.response.send_message(embed=embed, ephemeral=True, silent=True)
+        # await interaction.response.send_message(embed=embed, ephemeral=True, silent=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
 

@@ -25,11 +25,9 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
 
     # set preamble for Latex
 
-    extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm, tikz}\n" \
+    extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
                      "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                     "\\color{customtext}" \
-                     "\\usepackage[active,tightpage]{preview}" \
-                     "\\PreviewEnvironment{tikzpicture}"
+                     "\\color{customtext}"
 
     # Set custom name for file
     output_file = f"{output_file}.png"
@@ -63,7 +61,7 @@ def find_latex_error(error_log: str | Exception | bytes) -> str:
         error_log = str(error_log)
     elif isinstance(error_log, bytes):
         error_log = error_log.decode("utf-8")
-    error_log = error_log.replace("\r\n", "\n")
+    error_log = error_log.replace("\\r\\n", "\n")
     error_log = error_log.replace("\\n", "\n")
 
     for line in error_log.split("\n"):
