@@ -96,7 +96,6 @@ async def latex(interaction: discord.Interaction, latex_code: str):
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def help(interaction: discord.Interaction):
     name = "laTeX_Bot"
-    pfp = discord.File(r"A:\Users\Desktop\All Coding Stuff\2024\Discord LaTeX\botpfp.png", filename="botpfp.png")
 
     embed = discord.Embed(title="Help! - Commands and Features",
                           description="Hello!,  I'm LaTeX Bot 🤖. I can compile your LaTeX code in discord. \n"
