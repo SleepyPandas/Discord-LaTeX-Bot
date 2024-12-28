@@ -1,9 +1,10 @@
 import re
+from typing import Union
 
 from sympy import preview
 
 
-def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
+def text_to_latex(expr: str, output_file: str, dpi=250) -> Union[bool, str]:
     """
     Converts a text to LaTeX png
     returning True if it succeeds, False otherwise.
@@ -26,9 +27,12 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
 
     # set preamble for Latex
 
-    extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
+    extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm, tikz}\n" \
                      "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                     "\\color{customtext}"
+                     "\\color{customtext}\n" \
+                     "\\usepackage[active,tightpage]{preview}\n" \
+                     "\\PreviewEnvironment{tikzpicture}\n" \
+                     "\\setlength\\PreviewBorder{2mm}"
 
     # Set custom name for file
     output_file = f"{output_file}.png"
@@ -49,19 +53,25 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
                 # document=False
                 )
         return True
-    except Exception as e:
-        print(f'Failed to convert text to LaTeX: {e}')
-        error_log = str(e)
-        error = find_latex_error(error_log)
+    except Exception as log:
+        print(f'Failed to convert text to LaTeX: {log}')
+
+        error = find_latex_error(log)
         if error:
             return error
         else:
             return "Failed to Compile Unknown Error 💀💀💀"
 
 
-def find_latex_error(error_log: str) -> str:
-    error_log = error_log.replace("\\r\\n", "\n")
-    for line in error_log.splitlines():
+def find_latex_error(error_log: str | Exception | bytes) -> str:
+    if isinstance(error_log, Exception):
+        error_log = str(error_log)
+    elif isinstance(error_log, bytes):
+        error_log = error_log.decode("utf-8")
+    error_log = error_log.replace("\r\n", "\n")
+    error_log = error_log.replace("\\n", "\n")
+
+    for line in error_log.split("\n"):
         # Strip leading/trailing whitespace
         stripped_line = line.strip()
         # Check if it starts with '!' and ends with '.'
