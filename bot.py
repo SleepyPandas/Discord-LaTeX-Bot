@@ -60,12 +60,12 @@ async def on_ready():
 
 # ===== Commands =====/
 
-@client.tree.command(name="hello", description='test')
+@client.tree.command(name="ping", description='test')
 @app_commands.user_install()
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-async def hello(interaction: discord.Interaction):
+async def ping(interaction: discord.Interaction):
     # noinspection PyUnresolvedReferences
-    await interaction.response.send_message("Hello World!")
+    await interaction.response.send_message("PONGGGGGGG!!!!")
 
 
 # noinspection PyUnresolvedReferences
@@ -96,16 +96,18 @@ async def latex(interaction: discord.Interaction, latex_code: str):
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def help(interaction: discord.Interaction):
     name = "laTeX_Bot"
-    pfp = None
+    pfp = discord.File(r"A:\Users\Desktop\All Coding Stuff\2024\Discord LaTeX\botpfp.png", filename="botpfp.png")
 
-    embed = discord.Embed(title="Help!", description="Commands and Features", color=Color.orange())
+    embed = discord.Embed(title="Help! - Commands and Features",
+                          description="Hello!,  I'm LaTeX Bot 🤖. I can compile your LaTeX code in discord. \n"
+                                      "To use me type '/latex' followed by your LaTeX code "
+                                      "or type latex followed by latex code (server only)", color=Color.orange())
     embed.set_author(name=name)
-    embed.set_thumbnail(url=pfp)
-    embed.add_field(name="", value="Hello!,  I'm LaTeX Bot 🤖. I can convert your LaTeX code "
-                                   "into PNG images To use me type 'latex' followed by your LaTeX code."
-                                   "If used in Dms' use /latex followed by latex code"
-                    )
-
+    embed.set_thumbnail(
+        url="https://cdn.discordapp.com/avatars/"
+            "1242573317693640788/618c7d551cc6254a8170daeb2ef3ec22.webp?size=1280")
+    embed.add_field(name="Tips", value="To get a past message press up arrow on your keyboard ↑ \n"
+                                       "Currently you cannot use a preamble in your latex code")
     embed.set_footer(text=f"created by {name}")
     await interaction.response.send_message(embed=embed, ephemeral=False, silent=True)
 
