@@ -3,7 +3,7 @@ import re
 from sympy import preview
 
 
-def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
+def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
     """
     Converts a text to LaTeX png
     returning True if it succeeds, False otherwise.
@@ -56,7 +56,7 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
         if error:
             return error
         else:
-            return False
+            return "Failed to Compile Unknown Error 💀💀💀"
 
 
 def find_latex_error(error_log: str) -> str:
