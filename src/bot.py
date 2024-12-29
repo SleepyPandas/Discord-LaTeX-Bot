@@ -84,11 +84,11 @@ async def latex(interaction: discord.Interaction, latex_code: str):
 
     # output = text_to_latex(message_content, unique_id)
 
-    # Set a timeout of 5 seconds
+    # Set a timeout of 10 seconds
     try:
         output = await asyncio.wait_for(
             loop.run_in_executor(None, text_to_latex, latex_code, unique_id),
-            timeout=5.0  # Timeout in seconds
+            timeout=10.0  # Timeout in seconds
         )
     except asyncio.TimeoutError:
         # Handle the timeout case
