@@ -25,9 +25,20 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
 
     # set preamble for Latex
 
-    extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
-                     "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                     "\\color{customtext}"
+    # if the expr has /t
+
+    if r"\begin{tikzpicture}" in expr:
+        extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm, tikz}\n" \
+                         "\\usepackage[active,tightpage]{preview} \n" \
+                         "\\PreviewEnvironment{tikzpicture} \n " \
+                         "\\setlength\\PreviewBorder{2mm}\n  " \
+                         "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
+                         "\\color{customtext}"
+
+    else:
+        extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
+                         "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
+                         "\\color{customtext}"
 
     # Set custom name for file
     output_file = f"{output_file}.png"
