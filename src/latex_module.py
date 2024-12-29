@@ -31,9 +31,7 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
         extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm, tikz}\n" \
                          "\\usepackage[active,tightpage]{preview} \n" \
                          "\\PreviewEnvironment{tikzpicture} \n " \
-                         "\\setlength\\PreviewBorder{2mm}\n  " \
-                         "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                         "\\color{customtext}"
+                         "\\setlength\\PreviewBorder{2mm}"
 
     else:
         extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
