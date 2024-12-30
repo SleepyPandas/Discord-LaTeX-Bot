@@ -36,8 +36,9 @@ async def update_presence():
         name="Solo - Competitive Integrating",
         details="Competitive Integrating",
         state="Playing Solo",
-        # # Assets require that you have uploaded assets in your Discord Developer Portal
-        # # Replace 'large_image_key' with the actual key of your uploaded image
+        # Assets require that you have uploaded assets in your Discord Developer Portal
+        # Replace 'large_image_key' with key of your uploaded image e.g. file
+        # NOT USED FOR NOW
         # assets=discord.Asset(
         #     large_image="latex_image",  # The key/name of the large image asset
         #     large_text="Latex!"  # Tooltip text when hovering over the image
