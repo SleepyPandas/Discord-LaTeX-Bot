@@ -1,38 +1,52 @@
 from sympy import preview
+from src.Modified_Packages import *
 
 
-def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
+# Should Fork or was it pork :)
+
+
+def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     """
     Converts a text to LaTeX png
-    returning True if it succeeds, False otherwise.
+    returning a str if it succeeds, False otherwise.
 
     Precondition: The text must be properly formatted in LaTeX.
 
+    Attributes:
+     expr: str
+     output_file: str
+     dpi=(300 , optional) int | sets resolution
     """
 
     expr = remove_superfluous(expr)
 
-    # set preamble for Latex if tikz use below else use default
+    # TODO : /Nodes has strange interaction with preview() from sympy
+    # TODO : Consider using Latex2PNG from tex2img to replace all of sympy preview()
 
-    if r"\begin{tikzpicture}" in expr:
-        # For generating tikz only consider tikz picture environment with restricted margins
-        # Active, tight-page restricts the generation to margin
-        extra_preamble = "\\usepackage{xcolor, amsmath, amssymb, amsthm, tikz}\n" \
-                         "\\usepackage[active,tightpage]{preview} \n" \
+    # Latex2Png requires a full document structure a solution
+    # is to always add a \begin and document class and load a standard set of packages
+
+    if r"\begin{tikzpicture}" in expr or r"\documentclass{" in expr:
+        # For tikz consider only begin tikz picture
+        # Active, tight-page restricts the generation to fit full page
+        extra_preamble = "\\usepackage{xcolor, amsmath, amssymb, amsthm, tikz, pgfplots}\n" \
+                         "\\usepackage[active, tightpage]{preview} \n" \
+                         "\\usetikzlibrary{calc}" \
                          "\\PreviewEnvironment{tikzpicture} \n " \
                          "\\setlength\\PreviewBorder{2mm}"
 
         dvioptions = '-D', str(dpi)
 
-
     else:
+
         extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
                          "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                         "\\color{customtext}"
+                         "\\color{customtext}\n"
 
         dvioptions = '-D', str(dpi), '-bg', 'Transparent'
 
-        # Set custom name for file
+    # Set custom name for file
+
     output_file = f"{output_file}.png"
 
     try:
@@ -104,8 +118,6 @@ def remove_superfluous(expr: str) -> str:
         expr = expr.replace(r'\title', r'\bf')
 
     if r'\fill' in expr:
-        # I use repr to print literal string
-        # Not necessary, but I wanted to try it :)
         expr = expr.replace(r'\fill[', r'\draw[fill=')
 
     return expr
