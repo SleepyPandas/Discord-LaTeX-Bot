@@ -115,15 +115,17 @@ async def help(interaction: discord.Interaction):
     name = "laTeX_Bot"
 
     embed = discord.Embed(title="Help! - Commands and Features",
-                          description="Hello!,  I'm LaTeX Bot 🤖. I can compile your LaTeX code in discord. \n"
+                          description="Hello!, I'm LaTeX Bot. I can compile your LaTeX code in discord. \n"
                                       "To use me type '/latex' followed by your LaTeX code "
                                       "or type latex followed by latex code (server only)", color=Color.orange())
     embed.set_author(name=name)
     embed.set_thumbnail(
         url="https://cdn.discordapp.com/avatars/"
             "1242573317693640788/618c7d551cc6254a8170daeb2ef3ec22.webp?size=1280")
-    embed.add_field(name="Tips", value="To get a past message press up arrow on your keyboard ↑ \n"
-                                       "Currently you cannot use a preamble in your latex code")
+    embed.add_field(name="Tips", value=r"""To get a past message press up arrow on your keyboard ↑ \n
+                                       A preamble is only needed if using Tikz package otherwise \n
+                                       a basic structure is added by default However you still need.\n 
+                                       delimiters e.g. $...$ or \[...\] or maybe $$..$$ """)
     embed.set_footer(text=f"created by {name}")
     await interaction.response.send_message(embed=embed, ephemeral=False, silent=True)
 
@@ -133,7 +135,7 @@ async def help(interaction: discord.Interaction):
 async def on_message(message):
     if message.author == client.user:
         return
-    if message.content.startswith("latex") or message.content.startswith("```latex"):
+    if message.content.startswith("latex"):
 
         message_content = message.content
         channel = message.channel
