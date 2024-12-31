@@ -16,7 +16,6 @@ activity = discord.Activity(type=discord.ActivityType.playing, name="/help for w
 # Intents are required for the bot to function properly
 # Set up the bot with a prefix
 
-# bot = commands.Bot(command_prefix="/", intents=intents)
 client = commands.Bot(command_prefix="/",
                       intents=intents,
                       help_command=None,
@@ -29,21 +28,14 @@ client = commands.Bot(command_prefix="/",
 
 async def update_presence():
     """
-    Updates the bot's presence with detailed information.
+    Updates the bot's rich presence with some information.
+    # TODO : Maybe add a photo / Thumbnail?
     """
     activity = discord.Activity(
         type=discord.ActivityType.playing,
         name="Solo - Competitive Integrating",
         details="Competitive Integrating",
         state="Playing Solo",
-        # Assets require that you have uploaded assets in your Discord Developer Portal
-        # Replace 'large_image_key' with key of your uploaded image e.g. file
-        # NOT USED FOR NOW
-        # assets=discord.Asset(
-        #     large_image="latex_image",  # The key/name of the large image asset
-        #     large_text="Latex!"  # Tooltip text when hovering over the image
-        # ),
-        # Party information
         party=(1, 1)
 
     )
@@ -60,7 +52,7 @@ async def on_ready():
     await update_presence()
 
 
-# ===== Commands =====/
+# ===== Commands =====
 
 @client.tree.command(name="ping", description='test')
 @app_commands.user_install()
@@ -78,15 +70,17 @@ async def ping(interaction: discord.Interaction):
 async def latex(interaction: discord.Interaction, latex_code: str):
     await interaction.response.defer(thinking=True)
 
-    message_content = latex_code
     message_id = str(uuid.uuid4())
     unique_id = message_id[7:14]
+    # Get the event loop, so we can run latex_module with timeout
+    # While having a parallel loop active
     loop = asyncio.get_running_loop()
 
     # output = text_to_latex(message_content, unique_id)
 
     # Set a timeout of 10 seconds
     try:
+        # Run method in parallel with other loop and wait for result.
         output = await asyncio.wait_for(
             loop.run_in_executor(None, text_to_latex, latex_code, unique_id),
             timeout=10.0  # Timeout in seconds
@@ -103,14 +97,12 @@ async def latex(interaction: discord.Interaction, latex_code: str):
         return
 
     if output is True:
-        # await interaction.response.send_message(file=discord.File(f'{unique_id}.png'), silent=True)
         await interaction.followup.send(file=discord.File(f'{unique_id}.png'))
 
         # remove extra files after | Clears buffer
         os.remove(f'{unique_id}.png')
     else:
         embed = discord.Embed(title="Compilation Error", description=output, color=Color.red())
-        # await interaction.response.send_message(embed=embed, ephemeral=True, silent=True)
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
