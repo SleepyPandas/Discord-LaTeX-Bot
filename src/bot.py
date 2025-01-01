@@ -124,8 +124,8 @@ async def help(interaction: discord.Interaction):
             "1242573317693640788/618c7d551cc6254a8170daeb2ef3ec22.webp?size=1280")
     embed.add_field(name="Tips", value=r"""To get a past message press up arrow on your keyboard ↑. 
                                        A preamble is only needed if using a Tikz package otherwise 
-                                       a basic structure is added by default However you still need. 
-                                       delimiters e.g. $...$ or \[...\] or maybe $$..$$ """)
+                                       a basic structure is added by default. However you still need 
+                                       delimiters e.g. $...$ or \\[...\\] or maybe $$..$$ """)
     embed.set_footer(text=f"created by {name}")
     await interaction.response.send_message(embed=embed, ephemeral=False, silent=True)
 
