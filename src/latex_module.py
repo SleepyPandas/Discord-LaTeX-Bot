@@ -8,7 +8,7 @@ from Modified_Packages import Latex2PNG
 # Should Fork or was it pork :)
 
 
-def text_to_latex(expr: str, output_file: str, dpi=1000) -> bool | str:
+def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
     """
     Converts a text to LaTeX png
     returning a str if it succeeds, False otherwise.
@@ -37,7 +37,7 @@ def text_to_latex(expr: str, output_file: str, dpi=1000) -> bool | str:
             latex_code = latex_code.replace('latex', '', 1)
         renderer = Latex2PNG()
         try:
-            png_data = renderer.compile(latex_code, transparent=False, compiler='pdflatex', dpi=dpi)
+            png_data = renderer.compile(latex_code, transparent=False, compiler='pdflatex', dpi=800)
         except Exception as log:
             print(f'Failed to convert text to LaTeX: {log}')
             return "Failed to Compile Unknown Error 💀💀💀 or Unsupported code \n if using '/' commands remove comments"
