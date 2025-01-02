@@ -141,12 +141,30 @@ async def on_message(message):
         return
     if message.content.startswith("latex"):
 
-        message_content = message.content
+        latex_code = message.content
         channel = message.channel
         message_id = str(message.id)
         unique_id = message_id[7:14]
 
-        output = text_to_latex(message_content, unique_id)
+        loop = asyncio.get_running_loop()
+
+        # Set a timeout of 10 seconds
+        try:
+            # Run method concurrently with other loop and wait for result.
+            output = await asyncio.wait_for(
+                loop.run_in_executor(executor, text_to_latex, latex_code, unique_id),
+                timeout=10.0  # Timeout in seconds
+            )
+        except asyncio.TimeoutError:
+            # Handle the timeout case
+            embed = discord.Embed(
+                title="Timeout Error",
+                description="LaTeX compilation took too long. Please try again later or simplify your "
+                            "LaTeX code.",
+                color=discord.Color.red()
+            )
+            await channel.send(embed=embed, ephemeral=True)
+            return
 
         if output is True:
             await channel.send(file=discord.File(f'{unique_id}.png'))
