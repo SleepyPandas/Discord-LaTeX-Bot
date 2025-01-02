@@ -2,7 +2,7 @@ import re
 
 from sympy import preview
 
-from Modified_Packages import Latex2PNG
+from modified_packages import Latex2PNG
 
 
 # Should Fork or was it pork :)
@@ -30,6 +30,7 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
 
     if len(expr) > 2000:
         return "Too Complex"
+    expr = remove_hazardous_latex(expr)
 
     if r"\documentclass" in expr and r"\begin{tikzpicture}" in expr or r"\documentclass" in expr:
         latex_code = expr.replace(r"\documentclass{article}", r'\documentclass[border=1mm]{standalone} ')
@@ -144,4 +145,22 @@ def remove_superfluous(expr: str) -> str:
     if r'\fill' in expr:
         expr = expr.replace(r'\fill[', r'\draw[fill=')
 
+    return expr
+
+
+def remove_hazardous_latex(expr: str) -> str:
+    """ Basic regex removal for hazardous commands
+
+    Attribute:
+    expr: str
+
+    """
+    patterns = [
+        r'(\\write18[^}]*)',  # \write18
+        r'(\\openout[^}]*)',  # \openout
+        r'(\\usepackage\{shellesc\})',
+        # ...
+    ]
+    for pat in patterns:
+        expr = re.sub(pat, "", expr, flags=re.IGNORECASE)
     return expr
