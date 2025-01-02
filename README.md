@@ -60,5 +60,6 @@ If using /latex remove all comments
 
 
 ## Credit 
-Yan-Zero forked his tex2img package
-My short friend Indy 😁
+Yan-Zero forked his tex2img package & My short friend Indy 😁
+
+
