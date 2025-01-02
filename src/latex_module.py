@@ -31,7 +31,7 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
     if len(expr) > 2000:
         return "Too Complex"
 
-    if r"\documentclass" in expr and r"\begin{tikzpicture}" in expr:
+    if r"\documentclass" in expr and r"\begin{tikzpicture}" in expr or r"\documentclass" in expr:
         latex_code = expr.replace(r"\documentclass{article}", r'\documentclass[border=1mm]{standalone} ')
         if 'latex' in latex_code:
             latex_code = latex_code.replace('latex', '', 1)
