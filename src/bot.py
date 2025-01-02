@@ -1,5 +1,7 @@
 import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
+
 import discord
 import uuid
 from discord import app_commands
@@ -9,6 +11,8 @@ from discord.ext import commands
 from dotenv import load_dotenv
 
 load_dotenv()
+# Allocate 4 threads to be used concurrently
+executor = ThreadPoolExecutor(max_workers=4)
 intents = discord.Intents.all()
 intents.message_content = True
 activity = discord.Activity(type=discord.ActivityType.playing, name="/help for well, help")
@@ -80,9 +84,9 @@ async def latex(interaction: discord.Interaction, latex_code: str):
 
     # Set a timeout of 10 seconds
     try:
-        # Run method in parallel with other loop and wait for result.
+        # Run method concurrently with other loop and wait for result.
         output = await asyncio.wait_for(
-            loop.run_in_executor(None, text_to_latex, latex_code, unique_id),
+            loop.run_in_executor(executor, text_to_latex, latex_code, unique_id),
             timeout=10.0  # Timeout in seconds
         )
     except asyncio.TimeoutError:
