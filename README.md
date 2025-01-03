@@ -3,7 +3,7 @@ Compiles latex code in discord with /latex {code} or latex {code} (Note the latt
 
 ## Invite me here! 
 
-https://discord.com/oauth2/authorize?client_id=1242573317693640788
+https://discord.com/oauth2/authorize?client_id=1242573317693640788 <br />
 https://discordbotlist.com/bots/latex
 
 ## Example Use 
