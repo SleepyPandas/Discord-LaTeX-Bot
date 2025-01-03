@@ -2,7 +2,9 @@
 Compiles latex code in discord with /latex {code} or latex {code} (Note the latter option is only available in servers due to privacy concerns in private messages) 
 
 ## Invite me here! 
+
 https://discord.com/oauth2/authorize?client_id=1242573317693640788
+https://discordbotlist.com/bots/latex
 
 ## Example Use 
 ### Tikz Example 
