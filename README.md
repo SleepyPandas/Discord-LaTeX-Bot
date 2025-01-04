@@ -64,4 +64,16 @@ If using /latex remove all comments
 ## Credit 
 Yan-Zero forked his tex2img package & My short friend Indy 😁
 
+&nbsp;
+&nbsp;
+&nbsp;
 
+### Bonus
+It is also Samsung fridge compatable! 
+
+
+&nbsp;
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/dfa67b5b-9978-4544-bfc3-c3cba668f031" alt="Bonus">
+</div>
