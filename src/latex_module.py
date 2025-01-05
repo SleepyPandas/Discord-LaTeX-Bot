@@ -33,7 +33,7 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
     expr = remove_hazardous_latex(expr)
 
     if r"\documentclass" in expr and r"\begin{tikzpicture}" in expr or r"\documentclass" in expr:
-        latex_code = expr.replace(r"\documentclass{article}", r'\documentclass[border=1mm]{standalone} ')
+        latex_code = re.sub(r"\\documentclass.*?{.*?}", r'\documentclass[border=1mm]{standalone} ', expr)
         if 'latex' in latex_code:
             latex_code = latex_code.replace('latex', '', 1)
         renderer = Latex2PNG()
