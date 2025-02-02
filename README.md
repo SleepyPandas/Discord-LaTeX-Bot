@@ -2,7 +2,9 @@
 Compiles latex code in discord with /latex {code} or latex {code} (Note the latter option is only available in servers due to privacy concerns in private messages) 
 
 ## Invite me here! 
-https://discord.com/oauth2/authorize?client_id=1242573317693640788
+
+https://discord.com/oauth2/authorize?client_id=1242573317693640788 ( BOTH REDIRECT LINKS ) <br />
+https://discordbotlist.com/bots/latex
 
 ## Example Use 
 ### Tikz Example 
@@ -62,4 +64,16 @@ If using /latex remove all comments
 ## Credit 
 Yan-Zero forked his tex2img package & My short friend Indy 😁
 
+&nbsp;
+&nbsp;
+&nbsp;
 
+### Bonus
+It is also Samsung fridge compatable! 
+
+
+&nbsp;
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/dfa67b5b-9978-4544-bfc3-c3cba668f031" alt="Bonus">
+</div>
