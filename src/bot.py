@@ -10,6 +10,8 @@ from latex_module import *
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from src.AIAPI import create_chat_session, reset_history
+
 load_dotenv()
 # Allocate 4 threads to be used concurrently
 executor = ThreadPoolExecutor(max_workers=4)
@@ -66,12 +68,12 @@ async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("PONGGGGGGG!!!!")
 
 
-# noinspection PyUnresolvedReferences
-# for send_message pycharm doesn't recognize it but method exists
 @client.tree.command(name="latex", description='Complies Latex Code ~ in standalone Class')
 @app_commands.user_install()
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def latex(interaction: discord.Interaction, latex_code: str):
+    # noinspection PyUnresolvedReferences
+    # for send_message pycharm doesn't recognize it but method exists and Defer
     await interaction.response.defer(thinking=True)
 
     message_id = str(uuid.uuid4())
@@ -111,7 +113,6 @@ async def latex(interaction: discord.Interaction, latex_code: str):
         return
 
 
-# noinspection PyUnresolvedReferences
 @client.tree.command(name="help", description='See Features and Commands')
 @app_commands.user_install()
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -131,7 +132,68 @@ async def help(interaction: discord.Interaction):
                                        a basic structure is added by default. However you still need 
                                        delimiters e.g. $...$ or \\[...\\] or maybe $$..$$ """)
     embed.set_footer(text=f"created by {name}")
+    # noinspection PyUnresolvedReferences
     await interaction.response.send_message(embed=embed, ephemeral=False, silent=True)
+
+
+# =========AI======== Features
+#
+@client.tree.command(name="talk-to-me", description='LaTeX Bot Sentience')
+@app_commands.user_install()
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+async def ai_chat(interaction: discord.Interaction, user_message: str):
+    # noinspection PyUnresolvedReferences
+    await interaction.response.defer(thinking=True)
+
+    loop = asyncio.get_running_loop()
+    user_id = interaction.user.id
+
+    try:
+        output = await asyncio.wait_for(
+            loop.run_in_executor(executor, create_chat_session, user_message, user_id),
+            timeout=10.0
+        )
+
+    except asyncio.TimeoutError:
+        embed = discord.Embed(
+            title="Timeout Error",
+            description="compilation took too long",
+            color=discord.Color.red()
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+
+    if output == "History cleared":
+        embed = discord.Embed(color=discord.Color.red(),
+                              title="Memory Automatically cleared - My Memory is Full!",
+                              )
+        await interaction.followup.send(embed=embed)
+        return
+
+    embed = (discord.Embed(
+
+        title="Response" + ":woman_with_probing_cane: ",
+        color=discord.Color.green(),
+        description=output[:4096],
+
+    ).set_author(name="LaTeX Bot"))
+
+    # 1024 is Max limit
+
+    embed.add_field(name="Message", value=user_message, inline=False)
+    await interaction.followup.send(embed=embed)
+
+
+@client.tree.command(name="clear-history", description='clears chat history')
+@app_commands.user_install()
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+async def clear_history(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    embed = discord.Embed(color=discord.Color.red(),
+                          title=reset_history(user_id),
+                          )
+    # noinspection PyUnresolvedReferences
+    await interaction.response.send_message(embed=embed)
 
 
 # ===== EVENTS =====
