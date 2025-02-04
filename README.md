@@ -54,7 +54,9 @@ latex
 
 ### Sentience Feature Example
 
-``` /talk-to-me {What is the meaning of life} ```
+```
+/talk-to-me {What is the meaning of life} 
+```
 
 &nbsp;
 
