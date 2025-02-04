@@ -14,16 +14,16 @@ from typing import Any, Union, Tuple, List, Dict, Callable
 from pathlib import PurePath
 from PIL import Image
 
-from generators import uuid_generator, counter_generator, ThreadSafeGenerator
+from .generators import uuid_generator, counter_generator, ThreadSafeGenerator
 
-from parsers import (
+from .parsers import (
     parse_buffer_to_pgm,
     parse_buffer_to_ppm,
     parse_buffer_to_jpeg,
     parse_buffer_to_png,
 )
 
-from exceptions import (
+from .exceptions import (
     PDFInfoNotInstalledError,
     PDFPageCountError,
     PDFSyntaxError,
