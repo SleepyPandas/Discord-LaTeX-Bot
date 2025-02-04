@@ -64,11 +64,11 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
     else:
         expr = remove_superfluous(expr)
 
-        extra_preamble = "\\usepackage{xcolor, pagecolor, amsmath, amssymb, amsthm}\n" \
+        extra_preamble = "\\usepackage{xcolor}\n" \
                          "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
                          "\\color{customtext}\n"
 
-        dvioptions = '-D', str(dpi), '-bg', 'Transparent'
+        dvioptions = ('-D', str(dpi), '-bg', 'Transparent')
 
         # Set custom name for file
 
