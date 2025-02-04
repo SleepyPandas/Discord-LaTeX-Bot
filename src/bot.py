@@ -10,7 +10,7 @@ from latex_module import *
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from src.AIAPI import create_chat_session, reset_history
+from AIAPI import create_chat_session, reset_history
 
 load_dotenv()
 # Allocate 4 threads to be used concurrently
@@ -181,6 +181,7 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
     # 1024 is Max limit
 
     embed.add_field(name="Message", value=user_message, inline=False)
+
     await interaction.followup.send(embed=embed)
 
 
@@ -202,7 +203,7 @@ async def on_message(message):
     if message.author == client.user:
         return
     if message.content.startswith("latex"):
-
+        print('YES')
         latex_code = message.content
         channel = message.channel
         message_id = str(message.id)
