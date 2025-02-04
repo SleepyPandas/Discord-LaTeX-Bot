@@ -117,16 +117,24 @@ async def latex(interaction: discord.Interaction, latex_code: str):
 @app_commands.user_install()
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def help(interaction: discord.Interaction):
-    name = "laTeX_Bot"
+    name = "LaTeX_Bot"
 
     embed = discord.Embed(title="Help! - Commands and Features",
                           description="Hello!, I'm LaTeX Bot. I can compile your LaTeX code in discord. \n"
                                       "To use me type '/latex' followed by your LaTeX code "
                                       "or type latex followed by latex code (server only)", color=Color.orange())
     embed.set_author(name=name)
-    embed.set_thumbnail(
-        url="https://cdn.discordapp.com/avatars/"
-            "1242573317693640788/618c7d551cc6254a8170daeb2ef3ec22.webp?size=1280")
+
+    embed.add_field(name="Commands", value="```"
+                                           "/help                         To well get help\n\n" 
+                                           "/latex {$$ latex code $$}     To compile LaTeX!\n\n"
+                                           "/talk-to-me                   Talk to me\n\n"
+                                           "/ping                         See if I'm awake!\n\n"
+                                           "latex {$$ latex code $$}      Without Slash Commands!\n\n"
+                                           "```",
+                    inline=False
+                    )
+
     embed.add_field(name="Tips", value=r"""To get a past message press up arrow on your keyboard ↑. 
                                        A preamble is only needed if using a Tikz package otherwise 
                                        a basic structure is added by default. However you still need 
