@@ -50,6 +50,17 @@ latex
   <img src="https://github.com/user-attachments/assets/a020768e-88ff-4009-b493-aa49d1206899" alt="Example Equation">
 </div>
 
+&nbsp;
+
+### Sentience Feature Example
+
+``` /talk-to-me {What is the meaning of life} ```
+
+&nbsp;
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/9640a285-18d6-43f0-b59a-c99c8af4b006" alt="No Im missing!">
+</div>
 
 ## Tips
 To get a past message press up arrow on your keyboard ↑.
@@ -70,6 +81,7 @@ Yan-Zero forked his tex2img package & My short friend Indy 😁
 
 ### Bonus
 It is also Samsung fridge compatable! 
+
 
 
 &nbsp;
