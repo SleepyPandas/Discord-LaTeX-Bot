@@ -37,7 +37,7 @@ def create_chat_session(user_input: str, user_id: int) -> str:
     user_message = {"role": "user", "parts": [user_input]}
     history.append(user_message)
 
-    if len(history) > 10:
+    if len(history) > 20:
         return reset_history(user_id)
 
     response = chat.send_message(
