@@ -17,13 +17,13 @@ def create_chat_session(user_input: str, user_id: int) -> str:
         "temperature": .5,
         "top_p": 0.95,
         "top_k": 64,
-        "max_output_tokens": 512,
+        "max_output_tokens": 1024,
         "response_mime_type": "text/plain",
     }
 
     # EXPERIMENTAL MODEL CAN CHANGE OR BREAK
     model = genai.GenerativeModel(
-        model_name="learnlm-1.5-pro-experimental",
+        model_name="learnlm-2.0-flash-experimental",
         system_instruction=os.getenv("SYSTEM_INSTRUCTION"),
         tools="code_execution",
     )
