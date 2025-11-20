@@ -8,7 +8,7 @@ from modified_packages import Latex2PNG
 # Should Fork or was it pork :)
 
 
-def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
+def text_to_latex(expr: str, output_file: str, dpi: int) -> bool | str:
     """
     Converts a text to LaTeX png
     returning a str if it succeeds, False otherwise.
@@ -30,6 +30,8 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
 
     if len(expr) > 2000:
         return "Too Complex"
+    if dpi > 800:
+        return "Too Large"
     expr = remove_hazardous_latex(expr)
 
     if r"\documentclass" in expr and r"\begin{tikzpicture}" in expr or r"\documentclass" in expr:
@@ -80,7 +82,7 @@ def text_to_latex(expr: str, output_file: str, dpi=250) -> bool | str:
                     filename=output_file,
                     output='png',
                     euler=False,
-                    fontsize=14,
+                    fontsize=15,
                     dvioptions=dvioptions,
                     extra_preamble=extra_preamble,
                     # document=False
