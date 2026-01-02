@@ -1,5 +1,14 @@
-# Discord-LaTeX-Bot
-Discord bot designed to render LaTeX mathematical expressions into high-quality images in real-time. Built for academic servers, study groups, and STEM communities, this bot bridges the gap between complex mathematical typesetting and seamless discord communication.
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/7679c732-1e13-4194-9dc1-b3f981146346" width="200px" alt="GitHub Readme Stats" />
+  <h1 style="font-size: 28px; margin: 10px 0;">Discord-LaTeX-Bot</h1>
+  <p>Discord bot designed to render LaTeX mathematical expressions into high-quality images in real-time. Built for academic servers, study groups, and STEM communities, this bot bridges the gap between complex mathematical typesetting and seamless discord communication!</p>
+</div>
+
+
+
+
+
+
 
 ## Highlights
 - /latex renders LaTeX or TikZ into a PNG and posts it back
