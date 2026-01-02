@@ -2,7 +2,6 @@ import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-# Import Exception
 from google.generativeai.types.generation_types import StopCandidateException
 
 import discord
@@ -16,6 +15,7 @@ from dotenv import load_dotenv
 from AIAPI import create_chat_session, reset_history
 
 load_dotenv()
+
 # Allocate 4 threads to be used concurrently
 executor = ThreadPoolExecutor(max_workers=4)
 intents = discord.Intents.all()
@@ -23,11 +23,11 @@ intents.message_content = True
 activity = discord.Activity(type=discord.ActivityType.playing, name="/help for well, help")
 
 # Intents are required for the bot to function properly
-# Set up the bot with a prefix
 
 bot = commands.Bot(command_prefix="/",
                    intents=intents,
-                   # help_command=None,
+                   # Custom Help command provided
+                   help_command=None,
                    activity=activity
                    )
 
@@ -38,7 +38,6 @@ bot = commands.Bot(command_prefix="/",
 async def update_presence():
     """
     Updates the bot's rich presence with some information.
-    # TODO : Maybe add a photo / Thumbnail?
     """
     activity = discord.Activity(
         type=discord.ActivityType.playing,
@@ -66,6 +65,8 @@ async def on_ready():
 
     await update_presence()
 
+    # Debug Check
+
     # # Use a set to avoid duplicate users across guilds
     # unique_members = set()
     #
@@ -81,12 +82,7 @@ async def on_ready():
     #     print(f"{member.name}#{member.discriminator} (ID: {member.id})")
 
 
-# Monitoring For Users and Servers
-# TODO
-
-
 # ===== Commands =====
-
 
 @bot.tree.command(name="ping")
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -101,7 +97,7 @@ async def ping(interaction: discord.Interaction):
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 275):
     # noinspection PyUnresolvedReferences
-    # for send_message pycharm doesn't recognize it but method exists and Defer
+    # for send_message pycharm doesn't recognize it, but the method exists and Defer
     await interaction.response.defer(thinking=True)
 
     message_id = str(uuid.uuid4())
@@ -110,9 +106,6 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
     # While having a parallel loop active
     loop = asyncio.get_running_loop()
 
-    # output = text_to_latex(message_content, unique_id)
-
-    # Set a timeout of 10 seconds
     try:
         # Run method concurrently with other loop and wait for result.
         output = await asyncio.wait_for(
@@ -193,10 +186,11 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
     except asyncio.TimeoutError:
         embed = discord.Embed(
             title="Timeout Error",
-            description="compilation took too long",
+            description="AI response took too long. Please try again.",
             color=discord.Color.red()
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # Don't let a followup failure keep this coroutine hanging.
+        await asyncio.wait_for(interaction.followup.send(embed=embed, ephemeral=True), timeout=5.0)
         return
 
     except StopCandidateException as _:
