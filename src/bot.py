@@ -193,10 +193,11 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
     except asyncio.TimeoutError:
         embed = discord.Embed(
             title="Timeout Error",
-            description="compilation took too long",
+            description="AI response took too long. Please try again.",
             color=discord.Color.red()
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # Don't let a followup failure keep this coroutine hanging.
+        await asyncio.wait_for(interaction.followup.send(embed=embed, ephemeral=True), timeout=5.0)
         return
 
     except StopCandidateException as _:
