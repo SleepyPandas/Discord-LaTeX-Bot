@@ -8,7 +8,7 @@ from modified_packages import Latex2PNG
 # Should Fork or was it pork :)
 
 
-def text_to_latex(expr: str, output_file: str, dpi: int) -> bool | str:
+def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     """
     Converts a text to LaTeX png
     returning a str if it succeeds, False otherwise.
