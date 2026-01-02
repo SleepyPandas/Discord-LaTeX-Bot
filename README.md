@@ -1,14 +1,36 @@
-# Discord-Latex-Bot
-Compiles latex code in discord with /latex {code} or latex {code} (Note the latter option is only available in servers due to privacy concerns in private messages) 
+# Discord-LaTeX-Bot
+Discord bot designed to render LaTeX mathematical expressions into high-quality images in real-time. Built for academic servers, study groups, and STEM communities, this bot bridges the gap between complex mathematical typesetting and seamless discord communication.
 
-## Invite me here! 
+## Highlights
+- /latex renders LaTeX or TikZ into a PNG and posts it back
+- Works in servers and DMs, with timeouts to keep the bot responsive
+- Optional /talk-to-me command for quick Q&A
+- Async + thread pool rendering keeps the event loop free
+- *Renders small full size documents or inline*
 
-https://discord.com/oauth2/authorize?client_id=1242573317693640788 ( BOTH REDIRECT LINKS ) <br />
-https://discordbotlist.com/bots/latex
+## Built with
+- Python, discord.py, asyncio, ThreadPoolExecutor
+- LaTeX toolchain (standalone + TikZ) for rendering
+- Google Gemma API
+- [YtoTech Latex to PNG HTTP](https://github.com/YtoTech/latex-on-http)
 
-## Example Use 
-### Tikz Example 
- ```
+## Deployment
+- Deployed on Debian
+
+## Invite me here! (Redirect Links)
+For Use in DMs -- (https://discord.com/oauth2/authorize?client_id=1242573317693640788 )
+
+To Add to Server -- (https://discordbotlist.com/bots/latex)
+
+## Quick commands
+- /latex {code}
+- latex {code} (servers only)
+- /talk-to-me {question}
+- /help
+
+## Example Use
+### TikZ Example (Full Document)
+```
 latex
 
 \documentclass[border=1mm]{standalone}
@@ -38,9 +60,7 @@ latex
 
 &nbsp;
 
-
-### General Example 
-
+### General Example (In-Line)
 ```
 /latex \[ \hat{f}(\xi) = \int_{-\infty}^\infty f(x) e^{-2\pi i \xi x} \, dx \]
 ```
@@ -53,9 +73,8 @@ latex
 &nbsp;
 
 ### Sentience Feature Example
-
 ```
-/talk-to-me {What is the meaning of life} 
+/talk-to-me {What is the meaning of life}
 ```
 
 &nbsp;
@@ -65,26 +84,20 @@ latex
 </div>
 
 ## Tips
-To get a past message press up arrow on your keyboard ↑.
+- To get a past message press up arrow on your keyboard `.
+- A preamble is only needed if using a TikZ package; otherwise a basic structure is added by default.
+- You still need delimiters like "\$ ... \$", "\\[ ... \\]", or "\$$ ... \$$".
+- If using /latex remove all comments.
 
-A preamble is only needed if using a Tikz package otherwise
-a basic structure is added by default. However you still need
-delimiters e.g. "$...$" or "\\[...\\]" or maybe "$$..$$".
-
-If using /latex remove all comments 
-
-
-## Credit 
-Yan-Zero forked his tex2img package & My short friend Indy 😁
+## Credit
+Yan-Zero forked his tex2img package, and friend Indy for his support.
 
 &nbsp;
 &nbsp;
 &nbsp;
 
 ### Bonus
-It is also Samsung fridge compatable! 
-
-
+It is also Samsung fridge compatible!
 
 &nbsp;
 
