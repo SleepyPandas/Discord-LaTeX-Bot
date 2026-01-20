@@ -4,7 +4,8 @@ auto_mix_prep==0.2.0
 discord.py==2.6.4
 paramiko==4.0.0
 Pillow==12.1.0
-protobuf==6.33.2
+# protobuf==6.33.2 (commented out because 
+# it conflicts with google-generativeai now downloads best requirement)
 python-dotenv==1.2.1
 requests==2.32.5
 sympy==1.14.0

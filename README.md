@@ -23,9 +23,6 @@
 - Google Gemma API
 - [YtoTech Latex to PNG HTTP](https://github.com/YtoTech/latex-on-http)
 
-## Deployment
-- Deployed on Debian
-
 ## Invite me here! (Redirect Links)
 For Use in DMs -- (https://discord.com/oauth2/authorize?client_id=1242573317693640788 )
 
@@ -105,7 +102,30 @@ Yan-Zero forked his tex2img package, and friend Indy for his support.
 &nbsp;
 &nbsp;
 
-### Bonus
+
+## Run with Docker
+1. Create `src/.env` with your bot token (and any optional settings):
+```
+DISCORD_TOKEN=your_token_here
+# Optional (enables /talk-to-me)
+GEMINI_TOKEN=your_gemini_token_here
+# Optional (prompt steering)
+SYSTEM_INSTRUCTION=your_system_instruction_here
+# Optional (override LaTeX compiler API)
+LATEX_COMPILER_API_URL=https://latex.ytotech.com/builds/sync
+```
+2. Build and start the container:
+```
+docker compose up --build
+```
+3. To run in the background or stop:
+```
+docker compose up -d --build
+docker compose down
+```
+
+
+## Bonus
 It is also Samsung fridge compatible!
 
 &nbsp;
