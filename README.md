@@ -95,8 +95,7 @@ latex
 - You still need delimiters like "\$ ... \$", "\\[ ... \\]", or "\$$ ... \$$".
 - If using /latex remove all comments.
 
-## Credit
-Yan-Zero forked his tex2img package, and friend Indy for his support.
+
 
 &nbsp;
 &nbsp;
@@ -124,6 +123,9 @@ docker compose up -d --build
 docker compose down
 ```
 
+
+## Credit
+Yan-Zero forked his tex2img package, and friend Indy for his support.
 
 ## Bonus
 It is also Samsung fridge compatible!
