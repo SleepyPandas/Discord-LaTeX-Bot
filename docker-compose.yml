@@ -3,7 +3,7 @@ services:
   latex-bot:
     build: .
     env_file:
-      - .env
+      - src/.env
     working_dir: /app
     volumes:
       - .:/app
