@@ -1,3 +1,4 @@
+import ast
 import re
 
 from sympy import preview
@@ -29,9 +30,9 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     #
 
     if len(expr) > 2000:
-        return "Too Complex"
+        return "Input too long (limit: 2000 characters)."
     if dpi > 800:
-        return "Too Large"
+        return "DPI too large (limit: 800)."
     expr = remove_hazardous_latex(expr)
 
     if r"\documentclass" in expr and r"\begin{tikzpicture}" in expr or r"\documentclass" in expr:
@@ -43,7 +44,7 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
             png_data = renderer.compile(latex_code, transparent=False, compiler='pdflatex', dpi=520)
         except Exception as log:
             print(f'Failed to convert text to LaTeX: {log}')
-            return "Failed to Compile Unknown Error 💀💀💀 or Unsupported code \n if using '/' commands remove comments"
+            return format_latex_error(log)
 
         # Convert png_data to bytes
         if isinstance(png_data, list):
@@ -90,37 +91,121 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
             return True
         except Exception as log:
             print(f'Failed to convert text to LaTeX: {log}')
-            error = find_latex_error(log)
-            if error:
-                return error
-            else:
-                return "Failed to Compile Unknown Error 💀💀💀 or Unsupported code"
+            return format_latex_error(log)
+
+
+def _flatten_error_log(error_log: str | Exception | bytes | list) -> list[str]:
+    if isinstance(error_log, Exception):
+        error_log = str(error_log)
+    elif isinstance(error_log, bytes):
+        error_log = error_log.decode("utf-8", errors="replace")
+
+    if isinstance(error_log, list):
+        lines: list[str] = []
+        for item in error_log:
+            lines.extend(_flatten_error_log(item))
+        return lines
+
+    text = str(error_log)
+    if "error logs:" in text:
+        suffix = text.split("error logs:", 1)[1].strip()
+        if suffix.startswith("[") and suffix.endswith("]"):
+            try:
+                parsed = ast.literal_eval(suffix)
+            except (ValueError, SyntaxError):
+                parsed = None
+            if isinstance(parsed, list):
+                return _flatten_error_log(parsed)
+
+    text = text.replace("\\r\\n", "\n")
+    text = text.replace("\\n", "\n")
+    return text.splitlines()
+
+
+def _extract_error_details(lines: list[str]) -> tuple[str, str]:
+    primary = ""
+    context = ""
+
+    for idx, line in enumerate(lines):
+        stripped_line = line.strip()
+        if not stripped_line:
+            continue
+        if stripped_line.startswith("!"):
+            primary = stripped_line.lstrip("!").strip()
+            for look_ahead in range(idx + 1, min(idx + 4, len(lines))):
+                candidate = lines[look_ahead].strip()
+                if candidate.startswith("l."):
+                    context = candidate
+                    break
+            break
+        if "LaTeX Error:" in stripped_line:
+            primary = stripped_line.replace("LaTeX Error:", "").strip()
+            break
+        if "Package" in stripped_line and "Error" in stripped_line:
+            primary = stripped_line
+            break
+
+    if not primary:
+        for line in lines:
+            stripped_line = line.strip()
+            if "error" in stripped_line.lower() or "failed" in stripped_line.lower():
+                primary = stripped_line
+                break
+
+    return primary, context
+
+
+def _guess_latex_hint(primary: str, raw_text: str) -> str:
+    patterns = [
+        (r"Missing \$ inserted", "Check for missing $...$ math delimiters."),
+        (r"Missing \} inserted", "Check for unmatched braces { }."),
+        (r"Extra \}, or forgotten", "Check for unmatched braces or missing \\end{...}."),
+        (r"Undefined control sequence", "Unknown command. Check spelling or add the required \\usepackage{...}."),
+        (r"File `.+?' not found", "Missing file or package. Ensure it exists or add the package."),
+        (r"Runaway argument", "You likely have an unclosed brace or environment."),
+        (r"Misplaced alignment tab character &", "Use & only inside alignment environments like align or tabular."),
+        (r"Environment .+? undefined", "Unknown environment. Check spelling or add the package."),
+        (r"\\begin\{.+?\} ended by \\end\{.+?\}", "Mismatched \\begin/\\end environments."),
+        (r"You can't use `\\.+?' in math mode", "Use text-mode commands outside math or wrap text with \\text{...}."),
+        (r"Emergency stop", "Compilation stopped after a previous error."),
+        (r"Too many \}'s", "Too many closing braces }."),
+    ]
+
+    haystack = f"{primary}\n{raw_text}"
+    for pattern, hint in patterns:
+        if re.search(pattern, haystack, flags=re.IGNORECASE):
+            return hint
+    return ""
+
+
+def format_latex_error(error_log: str | Exception | bytes | list) -> str:
+    lines = _flatten_error_log(error_log)
+    if not lines:
+        return "Compilation failed. No error details were returned."
+
+    primary, context = _extract_error_details(lines)
+    hint = _guess_latex_hint(primary, "\n".join(lines))
+
+    parts = ["Compilation failed."]
+    if primary:
+        parts.append(f"Error: {primary}")
+    if context:
+        parts.append(f"At: {context}")
+    if hint:
+        parts.append(f"Hint: {hint}")
+
+    message = "\n".join(parts)
+    if len(message) > 3500:
+        return message[:3500].rstrip() + "..."
+    return message
 
 
 def find_latex_error(error_log: str | Exception | bytes) -> str:
     """
-    Will take an exception error, and parse the error into a str
-
-    -NOTE- | Attributes are str, exception and bytes
-    for different operating system compatability issues
-
-    Attributes
-        error_log: str | Exception | bytes
+    Backwards-compatible helper that extracts the primary error line.
     """
-    if isinstance(error_log, Exception):
-        error_log = str(error_log)
-    elif isinstance(error_log, bytes):
-        error_log = error_log.decode("utf-8")
-    error_log = error_log.replace("\\r\\n", "\n")
-    error_log = error_log.replace("\\n", "\n")
-    # OR splitlines()
-    for line in error_log.split("\n"):
-        # Strip leading/trailing whitespace
-        stripped_line = line.strip()
-        # Check if it starts with '!' and ends with '.'
-        if stripped_line.startswith('!') and stripped_line.endswith('.'):
-            return stripped_line
-    return ""
+    primary, _ = _extract_error_details(_flatten_error_log(error_log))
+    return primary
 
 
 def remove_superfluous(expr: str) -> str:
