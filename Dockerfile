@@ -14,13 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-fonts-recommended \
     texlive-pictures \
     texlive-plain-generic \
-
-    
     dvipng \
     poppler-utils \
     ghostscript \
     build-essential \
-
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
