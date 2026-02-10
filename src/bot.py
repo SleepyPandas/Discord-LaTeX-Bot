@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 
@@ -9,12 +10,15 @@ import uuid
 from discord import app_commands, Color
 from discord.ext import commands
 from latex_module import *
+from logging_config import configure_logging
 
 from dotenv import load_dotenv
 
 from AIAPI import create_chat_session, reset_history
 
 load_dotenv()
+configure_logging()
+logger = logging.getLogger(__name__)
 
 # Allocate 4 threads to be used concurrently
 executor = ThreadPoolExecutor(max_workers=4)
@@ -48,7 +52,7 @@ async def update_presence():
 
     )
     await bot.change_presence(activity=activity)
-    print("Presence updated successfully!")
+    logger.info("Presence updated successfully")
 
 
 # ==== initializer ====
@@ -56,12 +60,12 @@ async def update_presence():
 
 @bot.event
 async def on_ready():
-    print(f'We have logged in as {bot.user}')
+    logger.info("Logged in as %s", bot.user)
     try:
         synced = await bot.tree.sync()
-        print(f'We have synced {len(synced)} command(s)')
-    except Exception as e:
-        print(e)
+        logger.info("Synced %s command(s)", len(synced))
+    except Exception:
+        logger.exception("Failed to sync command tree")
 
     await update_presence()
 
@@ -113,6 +117,12 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
             timeout=10.0  # Timeout in seconds
         )
     except asyncio.TimeoutError:
+        logger.warning(
+            "LaTeX compile timeout user_id=%s request_id=%s dpi=%s",
+            interaction.user.id,
+            unique_id,
+            dpi,
+        )
         # Handle the timeout case
         embed = discord.Embed(
             title="Timeout Error",
@@ -124,11 +134,22 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
         return
 
     if output is True:
+        logger.debug(
+            "LaTeX compile success user_id=%s request_id=%s",
+            interaction.user.id,
+            unique_id,
+        )
         await interaction.followup.send(file=discord.File(f'{unique_id}.png'))
 
         # remove extra files after | Clears buffer
         os.remove(f'{unique_id}.png')
     else:
+        logger.warning(
+            "LaTeX compile failed user_id=%s request_id=%s reason=%s",
+            interaction.user.id,
+            unique_id,
+            str(output),
+        )
         embed = discord.Embed(title="Compilation Error", description=output, color=Color.red())
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
@@ -184,6 +205,7 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
         )
 
     except asyncio.TimeoutError:
+        logger.warning("AI timeout user_id=%s", user_id)
         embed = discord.Embed(
             title="Timeout Error",
             description="AI response took too long. Please try again.",
@@ -193,7 +215,8 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
         await asyncio.wait_for(interaction.followup.send(embed=embed, ephemeral=True), timeout=5.0)
         return
 
-    except StopCandidateException as _:
+    except StopCandidateException as e:
+        logger.warning("AI safety filters triggered user_id=%s err=%s", user_id, e)
         # Handle safety exceptions (like when the safety filters trigger).
         embed = discord.Embed(
             title="Safety Exception",
@@ -243,7 +266,6 @@ async def on_message(message):
     if message.author == bot.user:
         return
     if message.content.startswith("latex"):
-        print('YES')
         latex_code = message.content
         channel = message.channel
         message_id = str(message.id)
@@ -259,6 +281,11 @@ async def on_message(message):
                 timeout=10.0  # Timeout in seconds
             )
         except asyncio.TimeoutError:
+            logger.warning(
+                "Legacy latex timeout author_id=%s request_id=%s",
+                message.author.id,
+                unique_id,
+            )
             # Handle the timeout case
             embed = discord.Embed(
                 title="Timeout Error",
@@ -270,10 +297,21 @@ async def on_message(message):
             return
 
         if output is True:
+            logger.debug(
+                "Legacy latex compile success author_id=%s request_id=%s",
+                message.author.id,
+                unique_id,
+            )
             await channel.send(file=discord.File(f'{unique_id}.png'))
             # remove extra files after
             os.remove(f'{unique_id}.png')
         else:
+            logger.warning(
+                "Legacy latex compile failed author_id=%s request_id=%s reason=%s",
+                message.author.id,
+                unique_id,
+                str(output),
+            )
             embed = discord.Embed(title="Compilation Error", description=output, color=Color.red())
             await channel.send(embed=embed, silent=True)
             return

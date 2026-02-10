@@ -2,9 +2,16 @@ version: "3.9"
 services:
   latex-bot:
     build: .
+    platform: linux/arm64
     env_file:
       - src/.env
     working_dir: /app
     volumes:
       - .:/app
+    mem_limit: 768m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "5"
     restart: unless-stopped

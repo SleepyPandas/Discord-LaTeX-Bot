@@ -1,8 +1,11 @@
+import logging
 import re
 
 from sympy import preview
 
 from modified_packages import Latex2PNG
+
+_logger = logging.getLogger(__name__)
 
 
 # Should Fork or was it pork :)
@@ -41,8 +44,14 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
         renderer = Latex2PNG()
         try:
             png_data = renderer.compile(latex_code, transparent=False, compiler='pdflatex', dpi=520)
-        except Exception as log:
-            print(f'Failed to convert text to LaTeX: {log}')
+        except Exception as exc:
+            _logger.warning(
+                "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s err=%s",
+                output_file,
+                dpi,
+                len(expr),
+                exc,
+            )
             return "Failed to Compile Unknown Error 💀💀💀 or Unsupported code \n if using '/' commands remove comments"
 
         # Convert png_data to bytes
@@ -50,7 +59,7 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
             try:
                 png_bytes = b''.join(png_data)
             except TypeError:
-                print("Error: png_data list contains non-bytes items.")
+                _logger.warning("png_data list contains non-bytes items output_file=%s", output_file)
                 png_bytes = b''.join([item if isinstance(item, bytes) else b'' for item in png_data])
         elif isinstance(png_data, bytes):
             png_bytes = png_data
@@ -61,7 +70,7 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
         with open(output_file + '.png', 'wb') as f:
             f.write(png_bytes)
 
-        print("PNG generated: output.png")
+        _logger.debug("PNG generated output_file=%s.png", output_file)
         return True
     else:
         expr = remove_superfluous(expr)
@@ -88,12 +97,24 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
                     # document=False
                     )
             return True
-        except Exception as log:
-            print(f'Failed to convert text to LaTeX: {log}')
-            error = find_latex_error(log)
+        except Exception as exc:
+            error = find_latex_error(exc)
             if error:
+                _logger.warning(
+                    "Sympy preview compile failed output_file=%s dpi=%s expr_len=%s latex_error=%s",
+                    output_file,
+                    dpi,
+                    len(expr),
+                    error,
+                )
                 return error
             else:
+                _logger.exception(
+                    "Sympy preview compile failed without parseable LaTeX error output_file=%s dpi=%s expr_len=%s",
+                    output_file,
+                    dpi,
+                    len(expr),
+                )
                 return "Failed to Compile Unknown Error 💀💀💀 or Unsupported code"
 
 
