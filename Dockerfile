@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -31,7 +31,7 @@ WORKDIR /app
 COPY src/requirements.txt /app/
 
 # Use PiWheels to prevent RAM crashes during Python install
-RUN pip install --no-cache-dir --index-url https://www.piwheels.org/simple -r requirements.txt
+RUN pip install --no-cache-dir --extra-index-url https://www.piwheels.org/simple -r requirements.txt
 
 # Copy source code
 COPY src/ /app/src/
