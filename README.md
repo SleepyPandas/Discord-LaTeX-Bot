@@ -110,6 +110,8 @@ DISCORD_TOKEN=your_token_here
 GEMINI_TOKEN=your_gemini_token_here
 # Optional (prompt steering)
 SYSTEM_INSTRUCTION=your_system_instruction_here
+# Optional (application log verbosity)
+LOG_LEVEL=INFO
 # Optional (override LaTeX compiler API)
 LATEX_COMPILER_API_URL=https://latex.ytotech.com/builds/sync
 ```
@@ -122,6 +124,8 @@ docker compose up --build
 docker compose up -d --build
 docker compose down
 ```
+
+Compose log rotation can be set in `docker-compose.yml` (for example `max-size: "30m"` and `max-file: "1"`).
 
 
 ## Credit
