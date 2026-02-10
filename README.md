@@ -1,135 +1,152 @@
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/7679c732-1e13-4194-9dc1-b3f981146346" width="200px" alt="GitHub Readme Stats" />
-  <h1 style="font-size: 28px; margin: 10px 0;">Discord-LaTeX-Bot</h1>
-  <p>Discord bot designed to render LaTeX mathematical expressions into high-quality images in real-time. Built for academic servers, study groups, and STEM communities, this bot bridges the gap between complex mathematical typesetting and seamless discord communication!</p>
+  <img src="https://github.com/user-attachments/assets/7679c732-1e13-4194-9dc1-b3f981146346" width="200px" alt="Discord LaTeX Bot logo" />
+  <h1>Discord LaTeX Bot</h1>
+  <p>
+    A Discord bot that compiles LaTeX into PNG images so math, physics, and engineering conversations stay readable.
+    It is built for study servers, class groups, and anyone who is tired of math getting lost in plain text.
+  </p>
 </div>
 
+## About the project
 
+I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wanted to be able to generate or copy full Latex documents and have them render too! Heres what it does:
 
+- Reliable rendering for both quick inline math and full document/TikZ snippets
+- Fast interaction so the bot does not hang while compiling
 
+## Core Features
 
+- `/latex` compiles LaTeX and posts a rendered PNG
+- Supports inline expressions and full-document/TikZ workflows
+- Works in servers, DMs, and private channels
+- Uses timeout guards during rendering and AI responses
+- Optional `/talk-to-me` command powered by Google's Gemini ecosystem
+- Legacy `latex {LaTeX Code}` message command support in servers
 
+## Technical Highlights
 
-## Highlights
-- /latex renders LaTeX or TikZ into a PNG and posts it back
-- Works in servers and DMs, with timeouts to keep the bot responsive
-- Optional /talk-to-me command for quick Q&A
-- Async + thread pool rendering keeps the event loop free
-- *Renders small full size documents or inline*
+- **Async**: commands run with `asyncio`, and compilation is offloaded via `ThreadPoolExecutor` so the event loop stays responsive.
+- **Timeout safety**: rendering and AI calls are wrapped with `asyncio.wait_for` to prevent long-running requests from blocking users.
+- **Container-friendly logging**: configurable `LOG_LEVEL`, stdout output, and compose log rotation support.
+- **Linux / Dockerized deployment**: Designed to be deployed on Linux based systems.
 
-## Built with
-- Python, discord.py, asyncio, ThreadPoolExecutor
-- LaTeX toolchain (standalone + TikZ) for rendering
-- Google Gemma API
-- [YtoTech Latex to PNG HTTP](https://github.com/YtoTech/latex-on-http)
+## Commands
 
-## Invite me here! (Redirect Links)
-For Use in DMs -- (https://discord.com/oauth2/authorize?client_id=1242573317693640788 )
+| Command | Description |
+| --- | --- |
+| `/latex <latex_code> [dpi]` | Render LaTeX into a PNG image. |
+| `/help` | Show command and usage guidance. |
+| `/ping` | Health check command. |
+| `/talk-to-me <message>` | Optional conversational command (requires Gemini token). |
+| `/clear-history` | Clear chat history used by `/talk-to-me`. |
+| `latex <latex_code>` | Legacy message-based render command (server messages). |
 
-To Add to Server -- (https://discordbotlist.com/bots/latex)
+## Invite Links
 
-## Quick commands
-- /latex {code}
-- latex {code} (servers only)
-- /talk-to-me {question}
-- /help
+- DM install: `https://discord.com/oauth2/authorize?client_id=1242573317693640788`
+- Server listing: `https://discordbotlist.com/bots/latex`
 
-## Example Use
-### TikZ Example (Full Document)
-```
+## Example Usage
+
+### TikZ Example (full document)
+
+```tex
 latex
-
 \documentclass[border=1mm]{standalone}
 \usepackage{tikz}
 \usepackage{amsmath}
 \begin{document}
-
 \begin{tikzpicture}[scale=1.5,>=stealth]
     \draw[->] (-0.5,0) -- (3,0) node[right] {$x$};
     \draw[->] (0,-0.5) -- (0,3) node[above] {$y$};
-   \draw[thick, blue] (0,0) -- (2.5,1.5) node[above right] {$\mathbf{v}$};
-   \draw[thick, red] (0,0) -- (2,1.2) node[below right] {$\text{proj}_{\mathbf{u}} \mathbf{v}$};
+    \draw[thick, blue] (0,0) -- (2.5,1.5) node[above right] {$\mathbf{v}$};
+    \draw[thick, red] (0,0) -- (2,1.2) node[below right] {$\text{proj}_{\mathbf{u}} \mathbf{v}$};
     \draw[dashed] (2,1.2) -- (2.5,1.5);
     \draw[dashed] (2,1.2) -- (2,0);
     \draw[thick] (0,0) -- (2,1.2) node[midway, below left] {$\mathbf{u}$};
     \draw[fill] (2,1.2) circle (1pt);
     \draw[fill] (2.5,1.5) circle (1pt);
 \end{tikzpicture}
-
 \end{document}
 ```
-&nbsp;
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/52613cec-0d35-4f66-adcf-ec6cad236121" alt="Example tikz">
+  <img src="https://github.com/user-attachments/assets/52613cec-0d35-4f66-adcf-ec6cad236121" alt="TikZ render example">
 </div>
 
-&nbsp;
+### Inline Expression Example
 
-### General Example (In-Line)
+```text
+/latex \[ \hat{f}(\xi) = \int_{-\infty}^{\infty} f(x) e^{-2\pi i \xi x} \, dx \]
 ```
-/latex \[ \hat{f}(\xi) = \int_{-\infty}^\infty f(x) e^{-2\pi i \xi x} \, dx \]
-```
-&nbsp;
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/a020768e-88ff-4009-b493-aa49d1206899" alt="Example Equation">
+  <img src="https://github.com/user-attachments/assets/a020768e-88ff-4009-b493-aa49d1206899" alt="Inline LaTeX render example">
 </div>
 
-&nbsp;
-
-### Sentience Feature Example
-```
-/talk-to-me {What is the meaning of life}
-```
-
-&nbsp;
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/9640a285-18d6-43f0-b59a-c99c8af4b006" alt="No Im missing!">
-</div>
-
-## Tips
-- To get a past message press up arrow on your keyboard `.
-- A preamble is only needed if using a TikZ package; otherwise a basic structure is added by default.
-- You still need delimiters like "\$ ... \$", "\\[ ... \\]", or "\$$ ... \$$".
-- If using /latex remove all comments.
 
 
+## Setup
 
-&nbsp;
-&nbsp;
-&nbsp;
+### Docker (recommended)
 
+1. Create `src/.env` with required and optional values:
 
-## Run with Docker
-1. Create `src/.env` with your bot token (and any optional settings):
-```
+```env
 DISCORD_TOKEN=your_token_here
-# Optional (enables /talk-to-me)
-GEMINI_TOKEN=your_gemini_token_here
-# Optional (prompt steering)
+
+# Optional: GEMINI_TOKEN=your_token_here
+
+# Optional: used as persistent instruction context for chat responses
 SYSTEM_INSTRUCTION=your_system_instruction_here
-# Optional (application log verbosity)
+
+# Optional: controls Python logging level
 LOG_LEVEL=INFO
-# Optional (override LaTeX compiler API)
-LATEX_COMPILER_API_URL=https://latex.ytotech.com/builds/sync
 ```
-2. Build and start the container:
-```
+
+2. Build and run:
+
+```bash
 docker compose up --build
 ```
-3. To run in the background or stop:
-```
+
+3. Run detached / stop:
+
+```bash
 docker compose up -d --build
 docker compose down
 ```
 
-Compose log rotation can be set in `docker-compose.yml` (for example `max-size: "30m"` and `max-file: "1"`).
+4. View logs:
+
+```bash
+docker compose logs -f
+```
+
+### Local run (no Docker)
+
+```bash
+python -m venv .venv
+.venv\\Scripts\\activate
+pip install -r src/requirements.txt
+python src/bot.py
+```
+
+Note: local rendering requires a working LaTeX toolchain available to the host environment (TexLive).
+
+## Usage Notes
+
+- If you include a full `\documentclass ...` block, the bot treats it as a document render path.
+- For standard inline usage, include delimiters such as `$...$`, `$$...$$`, or `\[...\]`.
+- Large requests and high DPI are constrained to protect responsiveness.
 
 
-## Credit
-Yan-Zero forked his tex2img package, and friend Indy for his support.
+
+## Credits
+
+- Built and maintained by @SleepyPandas
+- LaTeX HTTP rendering support inspired by and built with [YtoTech Latex to PNG HTTP](https://github.com/YtoTech/latex-on-http)
+- Thanks to my friend Indy for support and testing help
 
 ## Bonus
 It is also Samsung fridge compatible!
@@ -137,5 +154,5 @@ It is also Samsung fridge compatible!
 &nbsp;
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/dfa67b5b-9978-4544-bfc3-c3cba668f031" alt="Bonus">
+  <img src="https://github.com/user-attachments/assets/dfa67b5b-9978-4544-bfc3-c3cba668f031" alt="Samsung fridge compatibility badge">
 </div>
