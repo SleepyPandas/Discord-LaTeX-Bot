@@ -41,10 +41,12 @@ class LatexModuleTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_base = str(Path(temp_dir) / "failed_render")
             with patch.object(latex_module, "Latex2PNG") as mock_latex2png:
-                mock_latex2png.return_value.compile.side_effect = Exception("opaque failure")
+                mock_renderer = mock_latex2png.return_value
+                mock_renderer.compile.side_effect = Exception("opaque failure")
 
                 result = latex_module.text_to_latex(FULL_DOCUMENT, output_base)
 
+        mock_renderer.compile.assert_called_once()
         self.assertEqual(result, latex_module._UNKNOWN_COMPILE_ERROR)
         self.assertFalse(Path(f"{output_base}.png").exists())
 
@@ -54,12 +56,15 @@ class LatexModuleTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_base = str(Path(temp_dir) / "rendered_latex")
             with patch.object(latex_module, "Latex2PNG") as mock_latex2png:
-                mock_latex2png.return_value.compile.return_value = png_payload
+                mock_renderer = mock_latex2png.return_value
+                mock_renderer.compile.return_value = png_payload
 
                 result = latex_module.text_to_latex(FULL_DOCUMENT, output_base)
 
             output_path = Path(f"{output_base}.png")
+            mock_renderer.compile.assert_called_once()
             self.assertTrue(output_path.exists())
+            self.assertEqual(output_path.read_bytes(), png_payload)
             self.assertTrue(output_path.read_bytes().startswith(PNG_SIGNATURE))
             self.assertEqual(result, True)
 

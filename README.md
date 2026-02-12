@@ -134,6 +134,15 @@ python src/bot.py
 
 Note: local rendering requires a working LaTeX toolchain available to the host environment (TexLive).
 
+### Quick Testing Suite
+
+Run these quick checks after code changes to validate core render/error test coverage:
+
+```bash
+
+python -m unittest tests.test_latex_module
+```
+
 ## Usage Notes
 
 - If you include a full `\documentclass ...` block, the bot treats it as a document render path.
