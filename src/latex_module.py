@@ -6,6 +6,11 @@ from sympy import preview
 from modified_packages import Latex2PNG
 
 _logger = logging.getLogger(__name__)
+_UNKNOWN_COMPILE_ERROR = (
+    "Failed to compile unsupported or unknown LaTeX code. "
+    "If you are using '/' commands, remove comments."
+)
+_COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
 
 
 # Should Fork or was it pork :)
@@ -45,14 +50,32 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
         try:
             png_data = renderer.compile(latex_code, transparent=False, compiler='pdflatex', dpi=520)
         except Exception as exc:
-            _logger.warning(
-                "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s err=%s",
+            normalized_error = _normalize_error_log(exc)
+            user_error = find_latex_error(normalized_error)
+
+            if user_error:
+                _logger.warning(
+                    "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s latex_error=%s",
+                    output_file,
+                    dpi,
+                    len(expr),
+                    user_error,
+                )
+            else:
+                _logger.warning(
+                    "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s err=%s",
+                    output_file,
+                    dpi,
+                    len(expr),
+                    exc,
+                )
+
+            _logger.debug(
+                "Latex2PNG raw compiler output output_file=%s\n%s",
                 output_file,
-                dpi,
-                len(expr),
-                exc,
+                normalized_error,
             )
-            return "Failed to Compile Unknown Error 💀💀💀 or Unsupported code \n if using '/' commands remove comments"
+            return user_error or _UNKNOWN_COMPILE_ERROR
 
         # Convert png_data to bytes
         if isinstance(png_data, list):
@@ -115,7 +138,81 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
                     dpi,
                     len(expr),
                 )
-                return "Failed to Compile Unknown Error 💀💀💀 or Unsupported code"
+                return _UNKNOWN_COMPILE_ERROR
+
+
+def _normalize_error_log(error_log: str | Exception | bytes) -> str:
+    """Normalize mixed error payloads into plain newline-separated log text."""
+    if isinstance(error_log, Exception):
+        error_log = str(error_log)
+    elif isinstance(error_log, bytes):
+        error_log = error_log.decode("utf-8", errors="replace")
+    elif not isinstance(error_log, str):
+        error_log = str(error_log)
+
+    error_log = error_log.replace("\\r\\n", "\n").replace("\\n", "\n")
+    error_log = error_log.replace("\r\n", "\n").replace("\r", "\n")
+
+    if _COMPILER_LOG_PREFIX in error_log:
+        error_log = error_log.split(_COMPILER_LOG_PREFIX, maxsplit=1)[1]
+
+    return error_log.strip()
+
+
+def _extract_latex_error_details(log_text: str) -> tuple[str, int | None]:
+    """Extract the most actionable LaTeX error and optional line number."""
+    line_no = None
+    line_match = re.search(r"[^\s:]+\.tex:(\d+):", log_text)
+    if line_match:
+        line_no = int(line_match.group(1))
+
+    lines = [line.strip() for line in log_text.splitlines() if line.strip()]
+
+    for line in lines:
+        if "LaTeX Error:" in line:
+            message = line[line.index("LaTeX Error:"):].lstrip("! ").strip()
+            return re.sub(r"\s+", " ", message), line_no
+
+    for line in lines:
+        if line.startswith("!"):
+            message = line.lstrip("! ").strip()
+            if message:
+                return re.sub(r"\s+", " ", message), line_no
+
+    fallback_tokens = (
+        "Emergency stop",
+        "Fatal error",
+        "Runaway argument",
+        "Undefined control sequence",
+        "Missing $ inserted",
+    )
+    for line in lines:
+        if any(token.lower() in line.lower() for token in fallback_tokens):
+            return re.sub(r"\s+", " ", line), line_no
+
+    return "", line_no
+
+
+def _format_human_latex_error(message: str, line_no: int | None) -> str:
+    """Format a concise Discord-safe compile error with optional hint."""
+    if line_no is not None:
+        output = f"LaTeX compile error (line {line_no}): {message}"
+    else:
+        output = f"LaTeX compile error: {message}"
+
+    lower_message = message.lower()
+    hint = ""
+    if ".sty" in lower_message and "not found" in lower_message:
+        hint = " Hint: this package may be unavailable in this renderer."
+    elif "missing $ inserted" in lower_message:
+        hint = " Hint: check math delimiters like $...$ or \\[...\\]."
+    elif "undefined control sequence" in lower_message:
+        hint = " Hint: check command spelling or required package imports."
+
+    output = f"{output}{hint}".strip()
+    if len(output) > 500:
+        return output[:497] + "..."
+    return output
 
 
 def find_latex_error(error_log: str | Exception | bytes) -> str:
@@ -128,19 +225,10 @@ def find_latex_error(error_log: str | Exception | bytes) -> str:
     Attributes
         error_log: str | Exception | bytes
     """
-    if isinstance(error_log, Exception):
-        error_log = str(error_log)
-    elif isinstance(error_log, bytes):
-        error_log = error_log.decode("utf-8")
-    error_log = error_log.replace("\\r\\n", "\n")
-    error_log = error_log.replace("\\n", "\n")
-    # OR splitlines()
-    for line in error_log.split("\n"):
-        # Strip leading/trailing whitespace
-        stripped_line = line.strip()
-        # Check if it starts with '!' and ends with '.'
-        if stripped_line.startswith('!') and stripped_line.endswith('.'):
-            return stripped_line
+    normalized_log = _normalize_error_log(error_log)
+    error_message, line_no = _extract_latex_error_details(normalized_log)
+    if error_message:
+        return _format_human_latex_error(error_message, line_no)
     return ""
 
 
