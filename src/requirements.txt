@@ -3,7 +3,7 @@ aiohttp>=3.9.0
 auto_mix_prep==0.2.0
 discord.py==2.6.4
 paramiko==4.0.0
-Pillow==12.1.0
+Pillow==12.1.1
 # protobuf==6.33.2 (commented out because 
 # it conflicts with google-generativeai now downloads best requirement)
 python-dotenv==1.2.1
