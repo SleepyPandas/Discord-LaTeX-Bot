@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from google.generativeai.types.generation_types import StopCandidateException
@@ -11,6 +12,7 @@ from discord import app_commands, Color
 from discord.ext import commands
 from latex_module import *
 from logging_config import configure_logging
+from metrics_store import init_metrics_db, record_latex_event
 
 from dotenv import load_dotenv
 
@@ -19,6 +21,42 @@ from AIAPI import create_chat_session, reset_history
 load_dotenv()
 configure_logging()
 logger = logging.getLogger(__name__)
+METRICS_DB_PATH = os.getenv(
+    "METRICS_DB_PATH",
+    str(Path(__file__).resolve().parents[1] / "monitoring" / "data" / "metrics.db"),
+)
+
+
+def _safe_record_latex_event(
+    source: str,
+    status: str,
+    dpi: int | None,
+    user_id: int | None,
+    error_message: str | None = None,
+) -> None:
+    try:
+        record_latex_event(
+            db_path=METRICS_DB_PATH,
+            source=source,
+            status=status,
+            dpi=dpi,
+            user_id=user_id,
+            error_message=error_message,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to record LaTeX metrics source=%s status=%s user_id=%s",
+            source,
+            status,
+            user_id,
+        )
+
+
+try:
+    init_metrics_db(METRICS_DB_PATH)
+    logger.info("Metrics database initialized path=%s", METRICS_DB_PATH)
+except Exception:
+    logger.exception("Failed to initialize metrics database path=%s", METRICS_DB_PATH)
 
 # Allocate 4 threads to be used concurrently
 executor = ThreadPoolExecutor(max_workers=4)
@@ -123,6 +161,13 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
             unique_id,
             dpi,
         )
+        _safe_record_latex_event(
+            source="slash",
+            status="timeout",
+            dpi=dpi,
+            user_id=interaction.user.id,
+            error_message="LaTeX compilation timed out",
+        )
         # Handle the timeout case
         embed = discord.Embed(
             title="Timeout Error",
@@ -132,12 +177,39 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
+    except Exception as exc:
+        logger.exception(
+            "LaTeX compile internal error user_id=%s request_id=%s dpi=%s",
+            interaction.user.id,
+            unique_id,
+            dpi,
+        )
+        _safe_record_latex_event(
+            source="slash",
+            status="internal_error",
+            dpi=dpi,
+            user_id=interaction.user.id,
+            error_message=str(exc),
+        )
+        embed = discord.Embed(
+            title="Internal Error",
+            description="Unexpected compile error. Please try again in a moment.",
+            color=discord.Color.red(),
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
 
     if output is True:
         logger.debug(
             "LaTeX compile success user_id=%s request_id=%s",
             interaction.user.id,
             unique_id,
+        )
+        _safe_record_latex_event(
+            source="slash",
+            status="success",
+            dpi=dpi,
+            user_id=interaction.user.id,
         )
         await interaction.followup.send(file=discord.File(f'{unique_id}.png'))
 
@@ -149,6 +221,13 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
             interaction.user.id,
             unique_id,
             str(output),
+        )
+        _safe_record_latex_event(
+            source="slash",
+            status="compile_error",
+            dpi=dpi,
+            user_id=interaction.user.id,
+            error_message=str(output),
         )
         embed = discord.Embed(title="Compilation Error", description=output, color=Color.red())
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -286,6 +365,13 @@ async def on_message(message):
                 message.author.id,
                 unique_id,
             )
+            _safe_record_latex_event(
+                source="legacy",
+                status="timeout",
+                dpi=275,
+                user_id=message.author.id,
+                error_message="LaTeX compilation timed out",
+            )
             # Handle the timeout case
             embed = discord.Embed(
                 title="Timeout Error",
@@ -295,12 +381,38 @@ async def on_message(message):
             )
             await channel.send(embed=embed, ephemeral=True)
             return
+        except Exception as exc:
+            logger.exception(
+                "Legacy latex internal error author_id=%s request_id=%s",
+                message.author.id,
+                unique_id,
+            )
+            _safe_record_latex_event(
+                source="legacy",
+                status="internal_error",
+                dpi=275,
+                user_id=message.author.id,
+                error_message=str(exc),
+            )
+            embed = discord.Embed(
+                title="Internal Error",
+                description="Unexpected compile error. Please try again in a moment.",
+                color=discord.Color.red(),
+            )
+            await channel.send(embed=embed, silent=True)
+            return
 
         if output is True:
             logger.debug(
                 "Legacy latex compile success author_id=%s request_id=%s",
                 message.author.id,
                 unique_id,
+            )
+            _safe_record_latex_event(
+                source="legacy",
+                status="success",
+                dpi=275,
+                user_id=message.author.id,
             )
             await channel.send(file=discord.File(f'{unique_id}.png'))
             # remove extra files after
@@ -311,6 +423,13 @@ async def on_message(message):
                 message.author.id,
                 unique_id,
                 str(output),
+            )
+            _safe_record_latex_event(
+                source="legacy",
+                status="compile_error",
+                dpi=275,
+                user_id=message.author.id,
+                error_message=str(output),
             )
             embed = discord.Embed(title="Compilation Error", description=output, color=Color.red())
             await channel.send(embed=embed, silent=True)
