@@ -11,25 +11,34 @@
     <section class="hero card">
       <p class="eyebrow">Discord LaTeX Bot</p>
       <h1>Local Monitoring</h1>
-      <p class="muted">Live 24h command usage and reliability for LaTeX compilation.</p>
-      <p class="meta">Refresh interval: <code>10s</code></p>
+      <p class="muted">Live usage, reliability, and trend monitoring for LaTeX compilation.</p>
+      <div class="controls-row">
+        <label for="range-select" class="label-control">Time Range</label>
+        <select id="range-select" class="range-select">
+          <option value="24h">24 Hours</option>
+          <option value="7d">7 Days</option>
+          <option value="30d">30 Days</option>
+          <option value="90d" selected>90 Days</option>
+        </select>
+      </div>
+      <p class="meta">Refresh interval: <code>30s</code></p>
     </section>
 
     <section class="cards-grid">
       <article class="metric card">
-        <p class="label">Attempts (24h)</p>
+        <p class="label">Attempts <span class="window-pill" data-window-label>(90d)</span></p>
         <p class="value" id="attempts">0</p>
       </article>
       <article class="metric card">
-        <p class="label">Successes (24h)</p>
+        <p class="label">Successes <span class="window-pill" data-window-label>(90d)</span></p>
         <p class="value" id="successes">0</p>
       </article>
       <article class="metric card">
-        <p class="label">Errors (24h)</p>
+        <p class="label">Errors <span class="window-pill" data-window-label>(90d)</span></p>
         <p class="value" id="errors">0</p>
       </article>
       <article class="metric card">
-        <p class="label">Error Rate (24h)</p>
+        <p class="label">Error Rate <span class="window-pill" data-window-label>(90d)</span></p>
         <p class="value" id="error-rate">0.00%</p>
       </article>
     </section>
@@ -37,14 +46,46 @@
     <section class="grid">
       <article class="card panel">
         <div class="panel-head">
-          <h2>By Source (24h)</h2>
+          <h2>By Source <span class="window-pill" id="source-window-pill">(90d)</span></h2>
           <span class="stamp" id="generated-at">Waiting for data</span>
         </div>
         <div id="source-breakdown" class="source-grid">
           <p class="muted">No events yet.</p>
         </div>
       </article>
+      <article class="card panel chart-panel">
+        <div class="panel-head">
+          <h2>Requests, Successes, Errors</h2>
+          <span class="stamp">X: Date, Y: Count</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="overview-chart"></canvas>
+        </div>
+      </article>
+    </section>
 
+    <section class="grid">
+      <article class="card panel chart-panel">
+        <div class="panel-head">
+          <h2>Errors by Status</h2>
+          <span class="stamp">X: Date, Y: Count</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="errors-chart"></canvas>
+        </div>
+      </article>
+      <article class="card panel chart-panel">
+        <div class="panel-head">
+          <h2>Requests by Source</h2>
+          <span class="stamp">X: Date, Y: Count</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="sources-chart"></canvas>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid">
       <article class="card panel">
         <div class="panel-head">
           <h2>Recent Compile Events</h2>
@@ -73,14 +114,26 @@
     </section>
   </main>
 
+  <script src="/static/vendor/chart.umd.min.js"></script>
   <script>
+    const WINDOW_KEYS = new Set(["24h", "7d", "30d", "90d"]);
     const attemptsEl = document.getElementById("attempts");
     const successesEl = document.getElementById("successes");
     const errorsEl = document.getElementById("errors");
     const errorRateEl = document.getElementById("error-rate");
     const generatedAtEl = document.getElementById("generated-at");
+    const rangeSelectEl = document.getElementById("range-select");
+    const sourceWindowPillEl = document.getElementById("source-window-pill");
+    const windowLabelEls = document.querySelectorAll("[data-window-label]");
     const sourceBreakdownEl = document.getElementById("source-breakdown");
     const eventsBodyEl = document.getElementById("events-body");
+    const overviewCanvas = document.getElementById("overview-chart");
+    const errorsCanvas = document.getElementById("errors-chart");
+    const sourcesCanvas = document.getElementById("sources-chart");
+
+    let overviewChart = null;
+    let errorsChart = null;
+    let sourcesChart = null;
 
     function asNumber(value) {
       const parsed = Number(value);
@@ -97,7 +150,7 @@
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
+        .replaceAll("\"", "&quot;")
         .replaceAll("'", "&#39;");
     }
 
@@ -106,10 +159,202 @@
       return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
     }
 
-    function renderSources(sources) {
+    function normalizeWindowKey(value) {
+      const candidate = String(value || "").toLowerCase();
+      return WINDOW_KEYS.has(candidate) ? candidate : "90d";
+    }
+
+    function setWindowPills(windowKey) {
+      const label = `(${windowKey})`;
+      for (const el of windowLabelEls) {
+        el.textContent = label;
+      }
+      sourceWindowPillEl.textContent = label;
+    }
+
+    function formatAxisLabel(iso, bucket) {
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) {
+        return iso;
+      }
+      if (bucket === "hour") {
+        return date.toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "UTC",
+        });
+      }
+      return date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      });
+    }
+
+    function chartOptions() {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: "index",
+          intersect: false,
+        },
+        plugins: {
+          legend: {
+            labels: {
+              color: "#d2d6df",
+              boxWidth: 12,
+              usePointStyle: true,
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: "#a7adb8",
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 10,
+            },
+            grid: {
+              color: "#2d3138",
+            },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: "#a7adb8",
+              precision: 0,
+            },
+            grid: {
+              color: "#2d3138",
+            },
+          },
+        },
+      };
+    }
+
+    function sourceLineColor(index) {
+      const hue = (index * 57) % 360;
+      return `hsl(${hue}, 75%, 62%)`;
+    }
+
+    function sourceFillColor(index) {
+      const hue = (index * 57) % 360;
+      return `hsla(${hue}, 75%, 62%, 0.15)`;
+    }
+
+    function upsertLineChart(currentChart, canvasEl, labels, datasets) {
+      if (!currentChart) {
+        return new Chart(canvasEl, {
+          type: "line",
+          data: { labels, datasets },
+          options: chartOptions(),
+        });
+      }
+      currentChart.data.labels = labels;
+      currentChart.data.datasets = datasets;
+      currentChart.update();
+      return currentChart;
+    }
+
+    function renderOverviewChart(timeseries) {
+      const bucket = text(timeseries?.window?.bucket);
+      const labels = (timeseries.labels || []).map((item) => formatAxisLabel(item, bucket));
+      const totals = timeseries.totals || {};
+      overviewChart = upsertLineChart(overviewChart, overviewCanvas, labels, [
+        {
+          label: "Attempts",
+          data: totals.attempts || [],
+          borderColor: "#8ab4f8",
+          backgroundColor: "rgba(138, 180, 248, 0.15)",
+          tension: 0.25,
+        },
+        {
+          label: "Successes",
+          data: totals.successes || [],
+          borderColor: "#9ce6c0",
+          backgroundColor: "rgba(156, 230, 192, 0.15)",
+          tension: 0.25,
+        },
+        {
+          label: "Errors",
+          data: totals.errors || [],
+          borderColor: "#f5a3be",
+          backgroundColor: "rgba(245, 163, 190, 0.15)",
+          tension: 0.25,
+        },
+      ]);
+    }
+
+    function renderErrorsChart(timeseries) {
+      const bucket = text(timeseries?.window?.bucket);
+      const labels = (timeseries.labels || []).map((item) => formatAxisLabel(item, bucket));
+      const errorsByStatus = timeseries.errors_by_status || {};
+      errorsChart = upsertLineChart(errorsChart, errorsCanvas, labels, [
+        {
+          label: "Timeout",
+          data: errorsByStatus.timeout || [],
+          borderColor: "#f6d58a",
+          backgroundColor: "rgba(246, 213, 138, 0.15)",
+          tension: 0.25,
+        },
+        {
+          label: "Compile Error",
+          data: errorsByStatus.compile_error || [],
+          borderColor: "#f5a3be",
+          backgroundColor: "rgba(245, 163, 190, 0.15)",
+          tension: 0.25,
+        },
+        {
+          label: "Internal Error",
+          data: errorsByStatus.internal_error || [],
+          borderColor: "#b9a6ff",
+          backgroundColor: "rgba(185, 166, 255, 0.15)",
+          tension: 0.25,
+        },
+      ]);
+    }
+
+    function renderSourcesChart(timeseries) {
+      const bucket = text(timeseries?.window?.bucket);
+      const labels = (timeseries.labels || []).map((item) => formatAxisLabel(item, bucket));
+      const bySource = timeseries.by_source || {};
+      const sourceEntries = Object.entries(bySource)
+        .sort((left, right) =>
+          right[1].reduce((sum, value) => sum + asNumber(value), 0) -
+          left[1].reduce((sum, value) => sum + asNumber(value), 0)
+        )
+        .slice(0, 8);
+
+      const datasets = sourceEntries.map(([name, values], index) => ({
+        label: name,
+        data: values || [],
+        borderColor: sourceLineColor(index),
+        backgroundColor: sourceFillColor(index),
+        tension: 0.25,
+      }));
+
+      if (datasets.length === 0) {
+        datasets.push({
+          label: "No source data",
+          data: labels.map(() => 0),
+          borderColor: "#4b4f57",
+          backgroundColor: "rgba(75, 79, 87, 0.15)",
+          tension: 0.25,
+        });
+      }
+
+      sourcesChart = upsertLineChart(sourcesChart, sourcesCanvas, labels, datasets);
+    }
+
+    function renderSources(sources, windowKey) {
       const entries = Object.entries(sources || {});
       if (entries.length === 0) {
-        sourceBreakdownEl.innerHTML = '<p class="muted">No events in the last 24 hours.</p>';
+        sourceBreakdownEl.innerHTML = `<p class="muted">No events in the selected ${escapeHtml(windowKey)} window.</p>`;
         return;
       }
 
@@ -148,35 +393,65 @@
       `).join("");
     }
 
-    async function loadSummary() {
-      const resp = await fetch("/api/summary", { cache: "no-store" });
+    async function loadSummary(windowKey) {
+      const resp = await fetch(`/api/summary?range=${encodeURIComponent(windowKey)}`, { cache: "no-store" });
       if (!resp.ok) throw new Error("summary request failed");
-      const data = await resp.json();
-      attemptsEl.textContent = asNumber(data.attempts_24h);
-      successesEl.textContent = asNumber(data.successes_24h);
-      errorsEl.textContent = asNumber(data.errors_24h);
-      errorRateEl.textContent = `${asNumber(data.error_rate_24h_percent).toFixed(2)}%`;
-      generatedAtEl.textContent = `Updated: ${text(data.generated_at)}`;
-      renderSources(data.by_source_24h);
+      return resp.json();
+    }
+
+    async function loadTimeseries(windowKey) {
+      const resp = await fetch(`/api/timeseries?range=${encodeURIComponent(windowKey)}`, { cache: "no-store" });
+      if (!resp.ok) throw new Error("timeseries request failed");
+      return resp.json();
     }
 
     async function loadEvents() {
       const resp = await fetch("/api/events?limit=50", { cache: "no-store" });
       if (!resp.ok) throw new Error("events request failed");
-      const data = await resp.json();
-      renderEvents(data.events || []);
+      return resp.json();
+    }
+
+    function applySummary(data) {
+      attemptsEl.textContent = asNumber(data.attempts);
+      successesEl.textContent = asNumber(data.successes);
+      errorsEl.textContent = asNumber(data.errors);
+      errorRateEl.textContent = `${asNumber(data.error_rate_percent).toFixed(2)}%`;
+      generatedAtEl.textContent = `Updated: ${text(data.generated_at)}`;
+      const windowKey = normalizeWindowKey(data?.window?.key);
+      setWindowPills(windowKey);
+      rangeSelectEl.value = windowKey;
+      renderSources(data.by_source, windowKey);
+    }
+
+    function applyTimeseries(data) {
+      renderOverviewChart(data);
+      renderErrorsChart(data);
+      renderSourcesChart(data);
     }
 
     async function refresh() {
+      const selectedRange = normalizeWindowKey(rangeSelectEl.value);
       try {
-        await Promise.all([loadSummary(), loadEvents()]);
+        const [summary, timeseries, events] = await Promise.all([
+          loadSummary(selectedRange),
+          loadTimeseries(selectedRange),
+          loadEvents(),
+        ]);
+        applySummary(summary);
+        applyTimeseries(timeseries);
+        renderEvents(events.events || []);
       } catch (err) {
         generatedAtEl.textContent = "Failed to load data";
       }
     }
 
+    if (typeof Chart === "undefined") {
+      generatedAtEl.textContent = "Chart library failed to load";
+    }
+
+    rangeSelectEl.addEventListener("change", refresh);
     refresh();
-    setInterval(refresh, 10000);
+    setInterval(refresh, 30000);
   </script>
 </body>
 </html>
