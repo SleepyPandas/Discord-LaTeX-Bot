@@ -52,6 +52,31 @@ def _safe_record_latex_event(
         )
 
 
+def _log_command_success(
+    *,
+    user_id: int,
+    command: str,
+    source: str,
+    detail: str | None = None,
+) -> None:
+    if detail:
+        logger.info(
+            "Request completed user_id=%s source=%s command=%s status=success detail=%s",
+            user_id,
+            source,
+            command,
+            detail,
+        )
+        return
+
+    logger.info(
+        "Request completed user_id=%s source=%s command=%s status=success",
+        user_id,
+        source,
+        command,
+    )
+
+
 try:
     init_metrics_db(METRICS_DB_PATH)
     logger.info("Metrics database initialized path=%s", METRICS_DB_PATH)
@@ -132,6 +157,7 @@ async def on_ready():
 async def ping(interaction: discord.Interaction):
     # noinspection PyUnresolvedReferences
     await interaction.response.send_message("PONGGGGGGG!!!!")
+    _log_command_success(user_id=interaction.user.id, command="ping", source="slash")
 
 
 @bot.tree.command(name="latex", description='Complies Latex Code ~ in standalone Class')
@@ -212,6 +238,12 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
             user_id=interaction.user.id,
         )
         await interaction.followup.send(file=discord.File(f'{unique_id}.png'))
+        _log_command_success(
+            user_id=interaction.user.id,
+            command="latex",
+            source="slash",
+            detail=f"request_id={unique_id}",
+        )
 
         # remove extra files after | Clears buffer
         os.remove(f'{unique_id}.png')
@@ -263,6 +295,7 @@ async def help(interaction: discord.Interaction):
     embed.set_footer(text=f"created by {name}")
     # noinspection PyUnresolvedReferences
     await interaction.response.send_message(embed=embed, ephemeral=False, silent=True)
+    _log_command_success(user_id=interaction.user.id, command="help", source="slash")
 
 
 # =========AI======== Features
@@ -310,6 +343,12 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
                               title="Memory Automatically cleared - My Memory is Full!",
                               )
         await interaction.followup.send(embed=embed)
+        _log_command_success(
+            user_id=user_id,
+            command="talk-to-me",
+            source="slash",
+            detail="history_auto_cleared",
+        )
         return
 
     embed = (discord.Embed(
@@ -325,6 +364,7 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
     embed.add_field(name="Message", value=user_message[:1024], inline=False)
 
     await interaction.followup.send(embed=embed)
+    _log_command_success(user_id=user_id, command="talk-to-me", source="slash")
 
 
 @bot.tree.command(name="clear-history", description='clears chat history')
@@ -337,6 +377,11 @@ async def clear_history(interaction: discord.Interaction):
                           )
     # noinspection PyUnresolvedReferences
     await interaction.response.send_message(embed=embed)
+    _log_command_success(
+        user_id=user_id,
+        command="clear-history",
+        source="slash",
+    )
 
 
 # ===== EVENTS =====
@@ -415,6 +460,12 @@ async def on_message(message):
                 user_id=message.author.id,
             )
             await channel.send(file=discord.File(f'{unique_id}.png'))
+            _log_command_success(
+                user_id=message.author.id,
+                command="latex",
+                source="legacy",
+                detail=f"request_id={unique_id}",
+            )
             # remove extra files after
             os.remove(f'{unique_id}.png')
         else:
