@@ -128,6 +128,117 @@ def _query_summary(db_path: str, window_key: str) -> dict:
     return response
 
 
+def _bucket_spec(window_key: str) -> tuple[str, int]:
+    if window_key in {"24h", "7d"}:
+        return "hour", WINDOW_HOURS_BY_KEY[window_key]
+    return "day", WINDOW_HOURS_BY_KEY[window_key] // 24
+
+
+def _bucket_step(bucket: str) -> timedelta:
+    return timedelta(hours=1) if bucket == "hour" else timedelta(days=1)
+
+
+def _floor_to_bucket(ts: datetime, bucket: str) -> datetime:
+    if bucket == "hour":
+        return ts.replace(minute=0, second=0, microsecond=0)
+    return ts.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _parse_event_timestamp(created_at: str) -> datetime | None:
+    candidate = created_at.strip()
+    if candidate.endswith("Z"):
+        candidate = f"{candidate[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _query_timeseries(db_path: str, window_key: str) -> dict:
+    window_hours = WINDOW_HOURS_BY_KEY[window_key]
+    bucket, bucket_count = _bucket_spec(window_key)
+    step = _bucket_step(bucket)
+    now_utc = datetime.now(timezone.utc)
+    end_bucket_start = _floor_to_bucket(now_utc, bucket)
+    start_bucket = end_bucket_start - step * (bucket_count - 1)
+    labels = [
+        (start_bucket + step * index).isoformat(timespec="seconds")
+        for index in range(bucket_count)
+    ]
+    response = {
+        "window": {
+            "key": window_key,
+            "hours": window_hours,
+            "bucket": bucket,
+            "bucket_count": bucket_count,
+            "start_utc": labels[0],
+            "end_utc": labels[-1],
+        },
+        "labels": labels,
+        "totals": {
+            "attempts": [0] * bucket_count,
+            "successes": [0] * bucket_count,
+            "errors": [0] * bucket_count,
+        },
+        "errors_by_status": {
+            "timeout": [0] * bucket_count,
+            "compile_error": [0] * bucket_count,
+            "internal_error": [0] * bucket_count,
+        },
+        "by_source": {},
+        "generated_at": now_utc.isoformat(timespec="seconds"),
+    }
+
+    if not Path(db_path).exists():
+        return response
+
+    start_iso = labels[0]
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT created_at, source, status
+                FROM latex_events
+                WHERE created_at >= ?
+                ORDER BY created_at ASC;
+                """,
+                (start_iso,),
+            ).fetchall()
+    except sqlite3.Error:
+        LOGGER.exception("Failed to query timeseries from db=%s", db_path)
+        return response
+
+    for row in rows:
+        parsed = _parse_event_timestamp(row["created_at"])
+        if parsed is None:
+            continue
+        bucket_start = _floor_to_bucket(parsed, bucket)
+        if bucket_start < start_bucket or bucket_start > end_bucket_start:
+            continue
+        index = int((bucket_start - start_bucket) / step)
+        if index < 0 or index >= bucket_count:
+            continue
+
+        response["totals"]["attempts"][index] += 1
+        status = row["status"]
+        if status == "success":
+            response["totals"]["successes"][index] += 1
+        elif status in ERROR_STATUSES:
+            response["totals"]["errors"][index] += 1
+            response["errors_by_status"][status][index] += 1
+
+        source = row["source"]
+        source_series = response["by_source"].setdefault(source, [0] * bucket_count)
+        source_series[index] += 1
+
+    return response
+
+
 def _query_events(db_path: str, limit: int) -> list[dict]:
     if not Path(db_path).exists():
         return []
@@ -215,6 +326,12 @@ async def api_summary(request: web.Request) -> web.Response:
     return web.json_response(summary)
 
 
+async def api_timeseries(request: web.Request) -> web.Response:
+    window_key = _parse_window_key(request.query.get("range"))
+    timeseries = _query_timeseries(request.app["metrics_db_path"], window_key)
+    return web.json_response(timeseries)
+
+
 async def api_events(request: web.Request) -> web.Response:
     limit_raw = request.query.get("limit", "50")
     try:
@@ -234,6 +351,7 @@ def create_app() -> web.Application:
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
     app.router.add_get("/api/summary", api_summary)
+    app.router.add_get("/api/timeseries", api_timeseries)
     app.router.add_get("/api/events", api_events)
     app.router.add_static("/static", STATIC_DIR)
     return app
