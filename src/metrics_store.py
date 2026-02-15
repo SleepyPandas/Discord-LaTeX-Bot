@@ -1,13 +1,136 @@
+import logging
+import os
 import sqlite3
-from datetime import datetime, timezone
+import threading
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
 _VALID_STATUSES = {"success", "timeout", "compile_error", "internal_error"}
+_DEFAULT_RETENTION_DAYS = 90
+_DEFAULT_MAX_SIZE_BYTES = 512 * 1024 * 1024
+_DEFAULT_MAINTENANCE_INTERVAL_SECONDS = 60
+_PRUNE_BATCH_SIZE = 5000
+_MIN_RETENTION_DAYS = 1
+_MIN_MAX_SIZE_BYTES = 1024 * 1024
+_MIN_MAINTENANCE_INTERVAL_SECONDS = 1
+_LOGGER = logging.getLogger(__name__)
+_MAINTENANCE_STATE_LOCK = threading.Lock()
+_LAST_MAINTENANCE_RUN_MONOTONIC: dict[str, float] = {}
 
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _utc_cutoff_iso(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+
+
+def _read_positive_int_env(var_name: str, default_value: int, minimum: int) -> int:
+    raw_value = os.getenv(var_name)
+    if raw_value is None:
+        return default_value
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return default_value
+    if parsed < minimum:
+        return default_value
+    return parsed
+
+
+def _get_retention_days() -> int:
+    return _read_positive_int_env(
+        "METRICS_RETENTION_DAYS",
+        _DEFAULT_RETENTION_DAYS,
+        _MIN_RETENTION_DAYS,
+    )
+
+
+def _get_max_size_bytes() -> int:
+    return _read_positive_int_env(
+        "METRICS_MAX_SIZE_BYTES",
+        _DEFAULT_MAX_SIZE_BYTES,
+        _MIN_MAX_SIZE_BYTES,
+    )
+
+
+def _get_maintenance_interval_seconds() -> int:
+    return _read_positive_int_env(
+        "METRICS_MAINTENANCE_INTERVAL_SECONDS",
+        _DEFAULT_MAINTENANCE_INTERVAL_SECONDS,
+        _MIN_MAINTENANCE_INTERVAL_SECONDS,
+    )
+
+
+def _metrics_storage_size_bytes(db_path: str) -> int:
+    paths = (Path(db_path), Path(f"{db_path}-wal"), Path(f"{db_path}-shm"))
+    total = 0
+    for path in paths:
+        try:
+            total += path.stat().st_size
+        except FileNotFoundError:
+            continue
+    return total
+
+
+def _delete_oldest_batch(conn: sqlite3.Connection, batch_size: int) -> int:
+    cursor = conn.execute(
+        """
+        DELETE FROM latex_events
+        WHERE id IN (
+            SELECT id
+            FROM latex_events
+            ORDER BY created_at ASC, id ASC
+            LIMIT ?
+        );
+        """,
+        (batch_size,),
+    )
+    return int(cursor.rowcount or 0)
+
+
+def _run_metrics_maintenance(db_path: str) -> None:
+    retention_days = _get_retention_days()
+    max_size_bytes = _get_max_size_bytes()
+    retention_cutoff = _utc_cutoff_iso(retention_days)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "DELETE FROM latex_events WHERE created_at < ?;",
+            (retention_cutoff,),
+        )
+        conn.commit()
+
+        current_size = _metrics_storage_size_bytes(db_path)
+        if current_size <= max_size_bytes:
+            return
+
+        while current_size > max_size_bytes:
+            deleted_rows = _delete_oldest_batch(conn, _PRUNE_BATCH_SIZE)
+            conn.commit()
+
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            conn.execute("VACUUM;")
+            current_size = _metrics_storage_size_bytes(db_path)
+
+            if deleted_rows <= 0:
+                break
+
+
+def _should_run_throttled_maintenance(db_path: str) -> bool:
+    interval_seconds = _get_maintenance_interval_seconds()
+    db_key = str(Path(db_path))
+    now_monotonic = time.monotonic()
+
+    with _MAINTENANCE_STATE_LOCK:
+        previous = _LAST_MAINTENANCE_RUN_MONOTONIC.get(db_key)
+        if previous is not None and (now_monotonic - previous) < interval_seconds:
+            return False
+        _LAST_MAINTENANCE_RUN_MONOTONIC[db_key] = now_monotonic
+        return True
 
 
 def init_metrics_db(db_path: str) -> None:
@@ -34,7 +157,24 @@ def init_metrics_db(db_path: str) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_latex_events_created_at ON latex_events(created_at);"
         )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_latex_events_created_at_status
+            ON latex_events(created_at, status);
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_latex_events_created_at_source
+            ON latex_events(created_at, source);
+            """
+        )
         conn.commit()
+
+    try:
+        _run_metrics_maintenance(str(path))
+    except sqlite3.Error:
+        _LOGGER.exception("Metrics maintenance failed during db init path=%s", path)
 
 
 def record_latex_event(
@@ -64,3 +204,11 @@ def record_latex_event(
             ),
         )
         conn.commit()
+
+    if not _should_run_throttled_maintenance(db_path):
+        return
+
+    try:
+        _run_metrics_maintenance(db_path)
+    except sqlite3.Error:
+        _LOGGER.exception("Metrics maintenance failed during event write path=%s", db_path)
