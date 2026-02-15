@@ -219,3 +219,8 @@ __marimo__/
 
 src/utilities/
 *.png
+
+# Monitoring runtime data
+monitoring/data/*.db
+monitoring/data/*.db-wal
+monitoring/data/*.db-shm
