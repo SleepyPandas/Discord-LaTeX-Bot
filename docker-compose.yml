@@ -1,13 +1,41 @@
 services:
   latex-bot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     platform: linux/arm64
     env_file:
       - src/.env
+    environment:
+      METRICS_DB_PATH: /data/metrics.db
     working_dir: /app
     volumes:
       - .:/app
+      - ./monitoring/data:/data
     mem_limit: 768m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "5"
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: monitoring/dashboard/Dockerfile
+    platform: linux/arm64
+    env_file:
+      - src/.env
+    environment:
+      METRICS_DB_PATH: /data/metrics.db
+      DASHBOARD_HOST: 0.0.0.0
+      DASHBOARD_PORT: 8081
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./monitoring/data:/data
+    mem_limit: 256m
     logging:
       driver: "json-file"
       options:
