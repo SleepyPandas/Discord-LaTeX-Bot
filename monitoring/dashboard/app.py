@@ -13,6 +13,13 @@ BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 ERROR_STATUSES = ("timeout", "compile_error", "internal_error")
+WINDOW_HOURS_BY_KEY = {
+    "24h": 24,
+    "7d": 7 * 24,
+    "30d": 30 * 24,
+    "90d": 90 * 24,
+}
+DEFAULT_WINDOW_KEY = "90d"
 LOGGER = logging.getLogger(__name__)
 
 
@@ -33,6 +40,15 @@ def _window_start_iso(hours: int = 24) -> str:
     return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
 
 
+def _parse_window_key(raw_value: str | None) -> str:
+    if raw_value is None:
+        return DEFAULT_WINDOW_KEY
+    candidate = raw_value.strip().lower()
+    if candidate in WINDOW_HOURS_BY_KEY:
+        return candidate
+    return DEFAULT_WINDOW_KEY
+
+
 def _fetch_one_int(conn: sqlite3.Connection, query: str, params: tuple) -> int:
     cursor = conn.execute(query, params)
     row = cursor.fetchone()
@@ -42,15 +58,20 @@ def _fetch_one_int(conn: sqlite3.Connection, query: str, params: tuple) -> int:
     return int(value or 0)
 
 
-def _query_summary(db_path: str) -> dict:
-    threshold = _window_start_iso(24)
+def _query_summary(db_path: str, window_key: str) -> dict:
+    window_hours = WINDOW_HOURS_BY_KEY[window_key]
+    threshold = _window_start_iso(window_hours)
     response = {
-        "window_hours": 24,
-        "attempts_24h": 0,
-        "successes_24h": 0,
-        "errors_24h": 0,
-        "error_rate_24h_percent": 0.0,
-        "by_source_24h": {},
+        "window": {
+            "key": window_key,
+            "hours": window_hours,
+            "start_utc": threshold,
+        },
+        "attempts": 0,
+        "successes": 0,
+        "errors": 0,
+        "error_rate_percent": 0.0,
+        "by_source": {},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
@@ -59,17 +80,17 @@ def _query_summary(db_path: str) -> dict:
 
     try:
         with sqlite3.connect(db_path) as conn:
-            response["attempts_24h"] = _fetch_one_int(
+            response["attempts"] = _fetch_one_int(
                 conn,
                 "SELECT COUNT(*) FROM latex_events WHERE created_at >= ?;",
                 (threshold,),
             )
-            response["successes_24h"] = _fetch_one_int(
+            response["successes"] = _fetch_one_int(
                 conn,
                 "SELECT COUNT(*) FROM latex_events WHERE created_at >= ? AND status = ?;",
                 (threshold, "success"),
             )
-            response["errors_24h"] = _fetch_one_int(
+            response["errors"] = _fetch_one_int(
                 conn,
                 """
                 SELECT COUNT(*) FROM latex_events
@@ -95,15 +116,15 @@ def _query_summary(db_path: str) -> dict:
                     bucket["successes"] += int(total)
                 if status in ERROR_STATUSES:
                     bucket["errors"] += int(total)
-            response["by_source_24h"] = by_source
+            response["by_source"] = by_source
     except sqlite3.Error:
         LOGGER.exception("Failed to query summary from db=%s", db_path)
         return response
 
-    attempts = response["attempts_24h"]
-    errors = response["errors_24h"]
+    attempts = response["attempts"]
+    errors = response["errors"]
     if attempts > 0:
-        response["error_rate_24h_percent"] = round((errors / attempts) * 100.0, 2)
+        response["error_rate_percent"] = round((errors / attempts) * 100.0, 2)
     return response
 
 
@@ -189,7 +210,8 @@ async def health(_: web.Request) -> web.Response:
 
 
 async def api_summary(request: web.Request) -> web.Response:
-    summary = _query_summary(request.app["metrics_db_path"])
+    window_key = _parse_window_key(request.query.get("range"))
+    summary = _query_summary(request.app["metrics_db_path"], window_key)
     return web.json_response(summary)
 
 
