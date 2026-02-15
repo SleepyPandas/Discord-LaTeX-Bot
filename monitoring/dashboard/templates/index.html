@@ -7,15 +7,176 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <main class="shell">
-    <section class="card">
+  <main class="shell app">
+    <section class="hero card">
       <p class="eyebrow">Discord LaTeX Bot</p>
-      <h1>Monitoring Scaffold Ready</h1>
-      <p class="muted">
-        This is the frst step uhhhhhhhhhhhhhhhhhhhhh whatever whatever put something here placholder
-      </p>
-      <p class="db-path">DB: <code id="db-path">configured via METRICS_DB_PATH</code></p>
+      <h1>Local Monitoring</h1>
+      <p class="muted">Live 24h command usage and reliability for LaTeX compilation.</p>
+      <p class="meta">Refresh interval: <code>10s</code></p>
+    </section>
+
+    <section class="cards-grid">
+      <article class="metric card">
+        <p class="label">Attempts (24h)</p>
+        <p class="value" id="attempts">0</p>
+      </article>
+      <article class="metric card">
+        <p class="label">Successes (24h)</p>
+        <p class="value" id="successes">0</p>
+      </article>
+      <article class="metric card">
+        <p class="label">Errors (24h)</p>
+        <p class="value" id="errors">0</p>
+      </article>
+      <article class="metric card">
+        <p class="label">Error Rate (24h)</p>
+        <p class="value" id="error-rate">0.00%</p>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="card panel">
+        <div class="panel-head">
+          <h2>By Source (24h)</h2>
+          <span class="stamp" id="generated-at">Waiting for data</span>
+        </div>
+        <div id="source-breakdown" class="source-grid">
+          <p class="muted">No events yet.</p>
+        </div>
+      </article>
+
+      <article class="card panel">
+        <div class="panel-head">
+          <h2>Recent Compile Events</h2>
+          <span class="stamp">latest 50</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time (UTC)</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th>DPI</th>
+                <th>User ID</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody id="events-body">
+              <tr>
+                <td colspan="6" class="empty">No event data loaded.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
     </section>
   </main>
+
+  <script>
+    const attemptsEl = document.getElementById("attempts");
+    const successesEl = document.getElementById("successes");
+    const errorsEl = document.getElementById("errors");
+    const errorRateEl = document.getElementById("error-rate");
+    const generatedAtEl = document.getElementById("generated-at");
+    const sourceBreakdownEl = document.getElementById("source-breakdown");
+    const eventsBodyEl = document.getElementById("events-body");
+
+    function asNumber(value) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function text(value) {
+      if (value === null || value === undefined || value === "") return "n/a";
+      return String(value);
+    }
+
+    function escapeHtml(value) {
+      return text(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function badge(status) {
+      const cls = String(status || "").toLowerCase();
+      return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
+    }
+
+    function renderSources(sources) {
+      const entries = Object.entries(sources || {});
+      if (entries.length === 0) {
+        sourceBreakdownEl.innerHTML = '<p class="muted">No events in the last 24 hours.</p>';
+        return;
+      }
+
+      sourceBreakdownEl.innerHTML = entries.map(([name, data]) => {
+        const attempts = asNumber(data.attempts);
+        const errors = asNumber(data.errors);
+        const successes = asNumber(data.successes);
+        const rate = attempts > 0 ? ((errors / attempts) * 100).toFixed(2) : "0.00";
+        return `
+          <div class="source-card">
+            <p class="source-name">${escapeHtml(name)}</p>
+            <p class="source-row">Attempts: <strong>${attempts}</strong></p>
+            <p class="source-row">Successes: <strong>${successes}</strong></p>
+            <p class="source-row">Errors: <strong>${errors}</strong></p>
+            <p class="source-row">Error rate: <strong>${rate}%</strong></p>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderEvents(events) {
+      if (!Array.isArray(events) || events.length === 0) {
+        eventsBodyEl.innerHTML = '<tr><td colspan="6" class="empty">No events recorded yet.</td></tr>';
+        return;
+      }
+
+      eventsBodyEl.innerHTML = events.map((event) => `
+        <tr>
+          <td>${escapeHtml(event.created_at)}</td>
+          <td>${escapeHtml(event.source)}</td>
+          <td>${badge(event.status)}</td>
+          <td>${escapeHtml(event.dpi)}</td>
+          <td>${escapeHtml(event.user_id)}</td>
+          <td class="error-cell">${escapeHtml(event.error_message)}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function loadSummary() {
+      const resp = await fetch("/api/summary", { cache: "no-store" });
+      if (!resp.ok) throw new Error("summary request failed");
+      const data = await resp.json();
+      attemptsEl.textContent = asNumber(data.attempts_24h);
+      successesEl.textContent = asNumber(data.successes_24h);
+      errorsEl.textContent = asNumber(data.errors_24h);
+      errorRateEl.textContent = `${asNumber(data.error_rate_24h_percent).toFixed(2)}%`;
+      generatedAtEl.textContent = `Updated: ${text(data.generated_at)}`;
+      renderSources(data.by_source_24h);
+    }
+
+    async function loadEvents() {
+      const resp = await fetch("/api/events?limit=50", { cache: "no-store" });
+      if (!resp.ok) throw new Error("events request failed");
+      const data = await resp.json();
+      renderEvents(data.events || []);
+    }
+
+    async function refresh() {
+      try {
+        await Promise.all([loadSummary(), loadEvents()]);
+      } catch (err) {
+        generatedAtEl.textContent = "Failed to load data";
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 10000);
+  </script>
 </body>
 </html>
