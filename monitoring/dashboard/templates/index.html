@@ -95,7 +95,7 @@
           <table>
             <thead>
               <tr>
-                <th>Time (UTC)</th>
+                <th>Time (Toronto/New York)</th>
                 <th>Source</th>
                 <th>Status</th>
                 <th>DPI</th>
@@ -130,6 +130,18 @@
     const overviewCanvas = document.getElementById("overview-chart");
     const errorsCanvas = document.getElementById("errors-chart");
     const sourcesCanvas = document.getElementById("sources-chart");
+    const EVENT_TIME_ZONE = "America/Toronto";
+    const eventTimeFormatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: EVENT_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      hourCycle: "h23",
+    });
 
     let overviewChart = null;
     let errorsChart = null;
@@ -245,6 +257,29 @@
     function sourceFillColor(index) {
       const hue = (index * 57) % 360;
       return `hsla(${hue}, 75%, 62%, 0.15)`;
+    }
+
+    function formatEventDateTime(value) {
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return text(value);
+      }
+
+      const parts = eventTimeFormatter.formatToParts(parsed);
+      const values = {};
+      for (const part of parts) {
+        if (part.type !== "literal") {
+          values[part.type] = part.value;
+        }
+      }
+
+      const year = values.year || "0000";
+      const month = values.month || "00";
+      const day = values.day || "00";
+      const hour = values.hour || "00";
+      const minute = values.minute || "00";
+      const second = values.second || "00";
+      return `${year} ${month} ${day} - ${hour}:${minute}:${second}`;
     }
 
     function upsertLineChart(currentChart, canvasEl, labels, datasets) {
@@ -383,7 +418,7 @@
 
       eventsBodyEl.innerHTML = events.map((event) => `
         <tr>
-          <td>${escapeHtml(event.created_at)}</td>
+          <td>${escapeHtml(formatEventDateTime(event.created_at))}</td>
           <td>${escapeHtml(event.source)}</td>
           <td>${badge(event.status)}</td>
           <td>${escapeHtml(event.dpi)}</td>
