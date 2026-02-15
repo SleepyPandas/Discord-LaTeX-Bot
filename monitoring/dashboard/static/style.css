@@ -1,0 +1,74 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0f14;
+  --bg2: #131a22;
+  --panel: #111820;
+  --text: #e8edf3;
+  --muted: #97a7bb;
+  --accent: #45b7a5;
+  --line: #243141;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 15% -20%, #223344 0%, transparent 60%),
+    radial-gradient(1000px 500px at 90% 120%, #1b2734 0%, transparent 70%),
+    linear-gradient(180deg, var(--bg), var(--bg2));
+  color: var(--text);
+}
+
+.shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.card {
+  width: min(760px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+  backdrop-filter: blur(6px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1 {
+  margin: 0 0 14px;
+  font-size: clamp(28px, 5vw, 42px);
+  line-height: 1.08;
+}
+
+.muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.db-path {
+  margin: 18px 0 0;
+  color: var(--muted);
+}
+
+code {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
