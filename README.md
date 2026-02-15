@@ -20,6 +20,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 - Supports inline expressions and full-document/TikZ workflows
 - Works in servers, DMs, and private channels
 - Uses timeout guards during rendering and AI responses
+- Local monitoring dashboard for LaTeX usage counts and 24-hour error rate
 - Optional `/talk-to-me` command powered by Google's Gemini ecosystem
 - Legacy `latex {LaTeX Code}` message command support in servers
 
@@ -28,6 +29,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 - **Async**: commands run with `asyncio`, and compilation is offloaded via `ThreadPoolExecutor` so the event loop stays responsive.
 - **Timeout safety**: rendering and AI calls are wrapped with `asyncio.wait_for` to prevent long-running requests from blocking users.
 - **Container-friendly logging**: configurable `LOG_LEVEL`, stdout output, and compose log rotation support.
+- **Persistent metrics**: LaTeX compile outcomes are stored in SQLite and visualized in a separate local dashboard service.
 - **Linux / Dockerized deployment**: Designed to be deployed on Linux based systems.
 
 ## Commands
@@ -90,7 +92,7 @@ latex
 
 ### Docker (recommended)
 
-1. Create `src/.env` with required and optional values:
+1. Create `src/.env` (you can start from `src/.env.example`) with required and optional values:
 
 ```env
 DISCORD_TOKEN=your_token_here
@@ -102,6 +104,13 @@ SYSTEM_INSTRUCTION=your_system_instruction_here
 
 # Optional: controls Python logging level
 LOG_LEVEL=INFO
+
+# Optional: Dashboard auth (required if using monitoring dashboard)
+DASHBOARD_USERNAME=your_dashboard_username
+DASHBOARD_PASSWORD=your_dashboard_password
+
+# Optional: shared metrics DB path (defaults work in docker compose)
+METRICS_DB_PATH=/data/metrics.db
 ```
 
 2. Build and run:
@@ -120,8 +129,17 @@ docker compose down
 4. View logs:
 
 ```bash
-docker compose logs -f
+docker compose logs -f latex-bot
+docker compose logs -f dashboard
 ```
+
+5. Open the monitoring dashboard (local network):
+
+```text
+http://<pi-lan-ip>:8081
+```
+
+Use `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` when prompted.
 
 ### Local run (no Docker)
 
@@ -148,6 +166,14 @@ python -m unittest tests.test_latex_module
 - If you include a full `\documentclass ...` block, the bot treats it as a document render path.
 - For standard inline usage, include delimiters such as `$...$`, `$$...$$`, or `\[...\]`.
 - Large requests and high DPI are constrained to protect responsiveness.
+
+## Local Monitoring Dashboard
+
+- The dashboard runs as a separate service in `monitoring/dashboard`.
+- It tracks LaTeX command attempts, successes, failures, and a rolling 24-hour error rate.
+- Metrics are stored in `monitoring/data/metrics.db` (via docker volume mount).
+- Access is local-network only unless you explicitly port-forward your router.
+- `0.0.0.0` is a bind address, not a browser URL. Use `localhost` or your Pi LAN IP in the browser.
 
 
 
