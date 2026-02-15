@@ -20,7 +20,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 - Supports inline expressions and full-document/TikZ workflows
 - Works in servers, DMs, and private channels
 - Uses timeout guards during rendering and AI responses
-- Local monitoring dashboard for LaTeX usage counts and 24-hour error rate
+- Local monitoring dashboard with selectable windows (`24h`, `7d`, `30d`, `90d`) and trend charts
 - Optional `/talk-to-me` command powered by Google's Gemini ecosystem
 - Legacy `latex {LaTeX Code}` message command support in servers
 
@@ -111,6 +111,11 @@ DASHBOARD_PASSWORD=your_dashboard_password
 
 # Optional: shared metrics DB path (defaults work in docker compose)
 METRICS_DB_PATH=/data/metrics.db
+
+# Optional metrics retention policy (defaults shown)
+METRICS_RETENTION_DAYS=90
+METRICS_MAX_SIZE_BYTES=536870912
+METRICS_MAINTENANCE_INTERVAL_SECONDS=60
 ```
 
 2. Build and run:
@@ -154,11 +159,13 @@ Note: local rendering requires a working LaTeX toolchain available to the host e
 
 ### Quick Testing Suite
 
-Run these quick checks after code changes to validate core render/error test coverage:
+Run these quick checks after code changes:
 
 ```bash
 
 python -m unittest tests.test_latex_module
+python -m unittest tests.test_metrics_store
+python -m unittest tests.test_dashboard_api
 ```
 
 ## Usage Notes
@@ -170,8 +177,10 @@ python -m unittest tests.test_latex_module
 ## Local Monitoring Dashboard
 
 - The dashboard runs as a separate service in `monitoring/dashboard`.
-- It tracks LaTeX command attempts, successes, failures, and a rolling 24-hour error rate.
+- It tracks LaTeX command attempts, successes, failures, and error rates across selectable ranges (`24h`, `7d`, `30d`, `90d`).
+- It includes line charts for request/success/error totals, error-status trends, and request counts by source.
 - Metrics are stored in `monitoring/data/metrics.db` (via docker volume mount).
+- Metrics retention defaults to 90 days and enforces a 512MB SQLite cap by pruning oldest rows when needed.
 - Access is local-network only unless you explicitly port-forward your router.
 - `0.0.0.0` is a bind address, not a browser URL. Use `localhost` or your Pi LAN IP in the browser.
 
