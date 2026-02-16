@@ -10,8 +10,6 @@
   <main class="shell app">
     <section class="hero card">
       <p class="eyebrow">Discord LaTeX Bot</p>
-      <h1>Local Monitoring</h1>
-      <p class="muted">Live usage, reliability, and trend monitoring for LaTeX compilation.</p>
       <div class="controls-row">
         <label for="range-select" class="label-control">Time Range</label>
         <select id="range-select" class="range-select">
@@ -217,7 +215,7 @@
         plugins: {
           legend: {
             labels: {
-              color: "#d2d6df",
+              color: "#c9d1d9",
               boxWidth: 12,
               usePointStyle: true,
             },
@@ -226,23 +224,23 @@
         scales: {
           x: {
             ticks: {
-              color: "#a7adb8",
+              color: "#8b949e",
               maxRotation: 0,
               autoSkip: true,
               maxTicksLimit: 10,
             },
             grid: {
-              color: "#2d3138",
+              color: "#30363d",
             },
           },
           y: {
             beginAtZero: true,
             ticks: {
-              color: "#a7adb8",
+              color: "#8b949e",
               precision: 0,
             },
             grid: {
-              color: "#2d3138",
+              color: "#30363d",
             },
           },
         },
@@ -304,22 +302,22 @@
         {
           label: "Attempts",
           data: totals.attempts || [],
-          borderColor: "#8ab4f8",
-          backgroundColor: "rgba(138, 180, 248, 0.15)",
+          borderColor: "#58a6ff",
+          backgroundColor: "rgba(88, 166, 255, 0.2)",
           tension: 0.25,
         },
         {
           label: "Successes",
           data: totals.successes || [],
-          borderColor: "#9ce6c0",
-          backgroundColor: "rgba(156, 230, 192, 0.15)",
+          borderColor: "#3fb950",
+          backgroundColor: "rgba(63, 185, 80, 0.2)",
           tension: 0.25,
         },
         {
           label: "Errors",
           data: totals.errors || [],
-          borderColor: "#f5a3be",
-          backgroundColor: "rgba(245, 163, 190, 0.15)",
+          borderColor: "#f85149",
+          backgroundColor: "rgba(248, 81, 73, 0.2)",
           tension: 0.25,
         },
       ]);
@@ -333,22 +331,22 @@
         {
           label: "Timeout",
           data: errorsByStatus.timeout || [],
-          borderColor: "#f6d58a",
-          backgroundColor: "rgba(246, 213, 138, 0.15)",
+          borderColor: "#d29922",
+          backgroundColor: "rgba(210, 153, 34, 0.2)",
           tension: 0.25,
         },
         {
           label: "Compile Error",
           data: errorsByStatus.compile_error || [],
-          borderColor: "#f5a3be",
-          backgroundColor: "rgba(245, 163, 190, 0.15)",
+          borderColor: "#f85149",
+          backgroundColor: "rgba(248, 81, 73, 0.2)",
           tension: 0.25,
         },
         {
           label: "Internal Error",
           data: errorsByStatus.internal_error || [],
-          borderColor: "#b9a6ff",
-          backgroundColor: "rgba(185, 166, 255, 0.15)",
+          borderColor: "#8b949e",
+          backgroundColor: "rgba(139, 148, 158, 0.2)",
           tension: 0.25,
         },
       ]);
@@ -377,8 +375,8 @@
         datasets.push({
           label: "No source data",
           data: labels.map(() => 0),
-          borderColor: "#4b4f57",
-          backgroundColor: "rgba(75, 79, 87, 0.15)",
+          borderColor: "#8b949e",
+          backgroundColor: "rgba(139, 148, 158, 0.2)",
           tension: 0.25,
         });
       }
