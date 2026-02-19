@@ -87,16 +87,19 @@ except Exception:
 executor = ThreadPoolExecutor(max_workers=4)
 intents = discord.Intents.all()
 intents.message_content = True
-activity = discord.Activity(type=discord.ActivityType.playing, name="/help for well, help")
+activity = discord.Activity(
+    type=discord.ActivityType.playing, name="/help for well, help"
+)
 
 # Intents are required for the bot to function properly
 
-bot = commands.Bot(command_prefix="/",
-                   intents=intents,
-                   # Custom Help command provided
-                   help_command=None,
-                   activity=activity
-                   )
+bot = commands.Bot(
+    command_prefix="/",
+    intents=intents,
+    # Custom Help command provided
+    help_command=None,
+    activity=activity,
+)
 
 
 # ==== Rich Presence ====
@@ -111,8 +114,7 @@ async def update_presence():
         name="Solo - Competitive Integrating",
         details="Competitive Integrating",
         state="Playing Solo",
-        party=(1, 1)
-
+        party=(1, 1),
     )
     await bot.change_presence(activity=activity)
     logger.info("Presence updated successfully")
@@ -149,36 +151,59 @@ async def on_ready():
     #     print(f"{member.name}#{member.discriminator} (ID: {member.id})")
 
 
-# ===== Commands =====
-
-@bot.tree.command(name="ping")
-@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-@app_commands.allowed_installs(guilds=True, users=True)
-async def ping(interaction: discord.Interaction):
-    # noinspection PyUnresolvedReferences
-    await interaction.response.send_message("PONGGGGGGG!!!!")
-    _log_command_success(user_id=interaction.user.id, command="ping", source="slash")
+# ===== UI Components & Helpers =====
 
 
-@bot.tree.command(name="latex", description='Complies Latex Code ~ in standalone Class')
-@app_commands.allowed_installs(guilds=True, users=True)
-@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 275):
-    # noinspection PyUnresolvedReferences
-    # for send_message pycharm doesn't recognize it, but the method exists and Defer
-    await interaction.response.defer(thinking=True)
+class FixCodeModal(discord.ui.Modal, title="Fix LaTeX Code"):
+    latex_input = discord.ui.TextInput(
+        label="LaTeX Code",
+        style=discord.TextStyle.long,
+        placeholder="Enter your LaTeX code here...",
+        required=True,
+        max_length=4000,
+    )
+
+    def __init__(self, original_code: str, dpi: int):
+        super().__init__()
+        # If code prefix from on_message is included, strip it for editor
+        if original_code.startswith("latex "):
+            self.latex_input.default = original_code[6:]
+        else:
+            self.latex_input.default = original_code
+        self.dpi = dpi
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await handle_latex_compilation(interaction, self.latex_input.value, self.dpi)
+
+
+class FixCodeView(discord.ui.View):
+    def __init__(self, latex_code: str, dpi: int):
+        super().__init__(timeout=None)
+        self.latex_code = latex_code
+        self.dpi = dpi
+
+    @discord.ui.button(label="Fix Code", style=discord.ButtonStyle.primary, emoji="🔧")
+    async def fix_code_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        modal = FixCodeModal(original_code=self.latex_code, dpi=self.dpi)
+        await interaction.response.send_modal(modal)
+
+
+async def handle_latex_compilation(
+    interaction: discord.Interaction, latex_code: str, dpi: int
+):
+    if not interaction.response.is_done():
+        await interaction.response.defer(thinking=True)
 
     message_id = str(uuid.uuid4())
     unique_id = message_id[7:14]
-    # Get the event loop, so we can run latex_module with timeout
-    # While having a parallel loop active
     loop = asyncio.get_running_loop()
 
     try:
-        # Run method concurrently with other loop and wait for result.
         output = await asyncio.wait_for(
             loop.run_in_executor(executor, text_to_latex, latex_code, unique_id, dpi),
-            timeout=10.0  # Timeout in seconds
+            timeout=10.0,
         )
     except asyncio.TimeoutError:
         logger.warning(
@@ -194,14 +219,13 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
             user_id=interaction.user.id,
             error_message="LaTeX compilation timed out",
         )
-        # Handle the timeout case
         embed = discord.Embed(
             title="Timeout Error",
-            description="LaTeX compilation took too long. Please try again later or simplify your "
-                        "LaTeX code.",
-            color=discord.Color.red()
+            description="LaTeX compilation took too long. Please try again later or simplify your LaTeX code.",
+            color=Color.red(),
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        view = FixCodeView(latex_code, dpi)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         return
     except Exception as exc:
         logger.exception(
@@ -220,9 +244,10 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
         embed = discord.Embed(
             title="Internal Error",
             description="Unexpected compile error. Please try again in a moment.",
-            color=discord.Color.red(),
+            color=Color.red(),
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        view = FixCodeView(latex_code, dpi)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         return
 
     if output is True:
@@ -237,16 +262,14 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
             dpi=dpi,
             user_id=interaction.user.id,
         )
-        await interaction.followup.send(file=discord.File(f'{unique_id}.png'))
+        await interaction.followup.send(file=discord.File(f"{unique_id}.png"))
         _log_command_success(
             user_id=interaction.user.id,
             command="latex",
             source="slash",
             detail=f"request_id={unique_id}",
         )
-
-        # remove extra files after | Clears buffer
-        os.remove(f'{unique_id}.png')
+        os.remove(f"{unique_id}.png")
     else:
         logger.warning(
             "LaTeX compile failed user_id=%s request_id=%s reason=%s",
@@ -261,37 +284,67 @@ async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 27
             user_id=interaction.user.id,
             error_message=str(output),
         )
-        embed = discord.Embed(title="Compilation Error", description=output, color=Color.red())
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        embed = discord.Embed(
+            title="Compilation Error", description=output, color=Color.red()
+        )
+        view = FixCodeView(latex_code, dpi)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         return
 
 
-@bot.tree.command(name="help", description='See Features and Commands')
+# ===== Commands =====
+
+
+@bot.tree.command(name="ping")
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+@app_commands.allowed_installs(guilds=True, users=True)
+async def ping(interaction: discord.Interaction):
+    # noinspection PyUnresolvedReferences
+    await interaction.response.send_message("PONGGGGGGG!!!!")
+    _log_command_success(user_id=interaction.user.id, command="ping", source="slash")
+
+
+@bot.tree.command(name="latex", description="Complies Latex Code ~ in standalone Class")
+@app_commands.allowed_installs(guilds=True, users=True)
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 275):
+    await handle_latex_compilation(interaction, latex_code, dpi)
+
+
+@bot.tree.command(name="help", description="See Features and Commands")
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def help(interaction: discord.Interaction):
     name = "LaTeX_Bot"
 
-    embed = discord.Embed(title="Help! - Commands and Features",
-                          description="Hello!, I'm LaTeX Bot. I can compile your LaTeX code in discord. \n"
-                                      "To use me type '/latex' followed by your LaTeX code "
-                                      "or type latex followed by latex code (server only)", color=Color.orange())
+    embed = discord.Embed(
+        title="Help! - Commands and Features",
+        description="Hello!, I'm LaTeX Bot. I can compile your LaTeX code in discord. \n"
+        "To use me type '/latex' followed by your LaTeX code "
+        "or type latex followed by latex code (server only)",
+        color=Color.orange(),
+    )
     embed.set_author(name=name)
 
-    embed.add_field(name="Commands", value="```"
-                                           "/help                         To well get help\n\n"
-                                           "/latex {$$ latex code $$}     To compile LaTeX!\n\n"
-                                           "/talk-to-me                   Talk to me\n\n"
-                                           "/ping                         See if I'm awake!\n\n"
-                                           "latex {$$ latex code $$}      Without Slash Commands!\n\n"
-                                           "```",
-                    inline=False
-                    )
+    embed.add_field(
+        name="Commands",
+        value="```"
+        "/help                         To well get help\n\n"
+        "/latex {$$ latex code $$}     To compile LaTeX!\n\n"
+        "/talk-to-me                   Talk to me\n\n"
+        "/ping                         See if I'm awake!\n\n"
+        "latex {$$ latex code $$}      Without Slash Commands!\n\n"
+        "```",
+        inline=False,
+    )
 
-    embed.add_field(name="Tips", value=r"""To get a past message press up arrow on your keyboard ↑. 
+    embed.add_field(
+        name="Tips",
+        value=r"""To get a past message press up arrow on your keyboard ↑. 
                                        A preamble is only needed if using a Tikz package otherwise 
                                        a basic structure is added by default. However you still need 
-                                       delimiters e.g. $...$ or \\[...\\] or maybe $$..$$ """)
+                                       delimiters e.g. $...$ or \\[...\\] or maybe $$..$$ """,
+    )
     embed.set_footer(text=f"created by {name}")
     # noinspection PyUnresolvedReferences
     await interaction.response.send_message(embed=embed, ephemeral=False, silent=True)
@@ -300,7 +353,7 @@ async def help(interaction: discord.Interaction):
 
 # =========AI======== Features
 #
-@bot.tree.command(name="talk-to-me", description='LaTeX Bot Sentience')
+@bot.tree.command(name="talk-to-me", description="LaTeX Bot Sentience")
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def ai_chat(interaction: discord.Interaction, user_message: str):
@@ -313,7 +366,7 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
     try:
         output = await asyncio.wait_for(
             loop.run_in_executor(executor, create_chat_session, user_message, user_id),
-            timeout=15.0
+            timeout=15.0,
         )
 
     except asyncio.TimeoutError:
@@ -321,10 +374,12 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
         embed = discord.Embed(
             title="Timeout Error",
             description="AI response took too long. Please try again.",
-            color=discord.Color.red()
+            color=discord.Color.red(),
         )
         # Don't let a followup failure keep this coroutine hanging.
-        await asyncio.wait_for(interaction.followup.send(embed=embed, ephemeral=True), timeout=5.0)
+        await asyncio.wait_for(
+            interaction.followup.send(embed=embed, ephemeral=True), timeout=5.0
+        )
         return
 
     except StopCandidateException as e:
@@ -333,15 +388,16 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
         embed = discord.Embed(
             title="Safety Exception",
             description=f"Safety filters triggered",
-            color=discord.Color.red()
+            color=discord.Color.red(),
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
     if output == "History cleared":
-        embed = discord.Embed(color=discord.Color.red(),
-                              title="Memory Automatically cleared - My Memory is Full!",
-                              )
+        embed = discord.Embed(
+            color=discord.Color.red(),
+            title="Memory Automatically cleared - My Memory is Full!",
+        )
         await interaction.followup.send(embed=embed)
         _log_command_success(
             user_id=user_id,
@@ -351,13 +407,11 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
         )
         return
 
-    embed = (discord.Embed(
-
+    embed = discord.Embed(
         title="Response" + ":woman_with_probing_cane: ",
         color=discord.Color.green(),
         description=output[:4096],
-
-    ).set_author(name="LaTeX Bot"))
+    ).set_author(name="LaTeX Bot")
 
     # 1024 is Max limit
 
@@ -367,14 +421,15 @@ async def ai_chat(interaction: discord.Interaction, user_message: str):
     _log_command_success(user_id=user_id, command="talk-to-me", source="slash")
 
 
-@bot.tree.command(name="clear-history", description='clears chat history')
+@bot.tree.command(name="clear-history", description="clears chat history")
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def clear_history(interaction: discord.Interaction):
     user_id = interaction.user.id
-    embed = discord.Embed(color=discord.Color.red(),
-                          title=reset_history(user_id),
-                          )
+    embed = discord.Embed(
+        color=discord.Color.red(),
+        title=reset_history(user_id),
+    )
     # noinspection PyUnresolvedReferences
     await interaction.response.send_message(embed=embed)
     _log_command_success(
@@ -401,8 +456,10 @@ async def on_message(message):
         try:
             # Run method concurrently with other loop and wait for result.
             output = await asyncio.wait_for(
-                loop.run_in_executor(executor, text_to_latex, latex_code, unique_id, 275),
-                timeout=10.0  # Timeout in seconds
+                loop.run_in_executor(
+                    executor, text_to_latex, latex_code, unique_id, 275
+                ),
+                timeout=10.0,  # Timeout in seconds
             )
         except asyncio.TimeoutError:
             logger.warning(
@@ -420,11 +477,11 @@ async def on_message(message):
             # Handle the timeout case
             embed = discord.Embed(
                 title="Timeout Error",
-                description="LaTeX compilation took too long. Please try again later or simplify your "
-                            "LaTeX code.",
-                color=discord.Color.red()
+                description="LaTeX compilation took too long. Please try again later or simplify your LaTeX code.",
+                color=Color.red(),
             )
-            await channel.send(embed=embed, ephemeral=True)
+            view = FixCodeView(latex_code, 275)
+            await channel.send(embed=embed, view=view, silent=True)
             return
         except Exception as exc:
             logger.exception(
@@ -442,9 +499,10 @@ async def on_message(message):
             embed = discord.Embed(
                 title="Internal Error",
                 description="Unexpected compile error. Please try again in a moment.",
-                color=discord.Color.red(),
+                color=Color.red(),
             )
-            await channel.send(embed=embed, silent=True)
+            view = FixCodeView(latex_code, 275)
+            await channel.send(embed=embed, view=view, silent=True)
             return
 
         if output is True:
@@ -459,7 +517,7 @@ async def on_message(message):
                 dpi=275,
                 user_id=message.author.id,
             )
-            await channel.send(file=discord.File(f'{unique_id}.png'))
+            await channel.send(file=discord.File(f"{unique_id}.png"))
             _log_command_success(
                 user_id=message.author.id,
                 command="latex",
@@ -467,7 +525,7 @@ async def on_message(message):
                 detail=f"request_id={unique_id}",
             )
             # remove extra files after
-            os.remove(f'{unique_id}.png')
+            os.remove(f"{unique_id}.png")
         else:
             logger.warning(
                 "Legacy latex compile failed author_id=%s request_id=%s reason=%s",
@@ -482,11 +540,14 @@ async def on_message(message):
                 user_id=message.author.id,
                 error_message=str(output),
             )
-            embed = discord.Embed(title="Compilation Error", description=output, color=Color.red())
-            await channel.send(embed=embed, silent=True)
+            embed = discord.Embed(
+                title="Compilation Error", description=output, color=Color.red()
+            )
+            view = FixCodeView(latex_code, 275)
+            await channel.send(embed=embed, view=view, silent=True)
             return
     # must be used to process commands else they are overwritten by on_message
     await bot.process_commands(message)
 
 
-bot.run(os.getenv('DISCORD_TOKEN'))
+bot.run(os.getenv("DISCORD_TOKEN"))
