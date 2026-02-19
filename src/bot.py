@@ -182,7 +182,7 @@ class FixCodeView(discord.ui.View):
         self.latex_code = latex_code
         self.dpi = dpi
 
-    @discord.ui.button(label="Fix Code", style=discord.ButtonStyle.primary, emoji="🔧")
+    @discord.ui.button(label="Fix Code", style=discord.ButtonStyle.success, emoji="🔧")
     async def fix_code_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -285,7 +285,9 @@ async def handle_latex_compilation(
             error_message=str(output),
         )
         embed = discord.Embed(
-            title="Compilation Error", description=output, color=Color.red()
+            title="Compilation Error",
+            description=f"```yaml\n{output}\n```",
+            color=Color.red(),
         )
         view = FixCodeView(latex_code, dpi)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
@@ -541,7 +543,9 @@ async def on_message(message):
                 error_message=str(output),
             )
             embed = discord.Embed(
-                title="Compilation Error", description=output, color=Color.red()
+                title="Compilation Error",
+                description=f"```yaml\n{output}\n```",
+                color=Color.red(),
             )
             view = FixCodeView(latex_code, 275)
             await channel.send(embed=embed, view=view, silent=True)
