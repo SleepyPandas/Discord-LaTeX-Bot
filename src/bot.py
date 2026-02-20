@@ -173,7 +173,9 @@ class FixCodeModal(discord.ui.Modal, title="Fix LaTeX Code"):
         self.dpi = dpi
 
     async def on_submit(self, interaction: discord.Interaction):
-        await handle_latex_compilation(interaction, self.latex_input.value, self.dpi)
+        await handle_latex_compilation(
+            interaction, self.latex_input.value, self.dpi, source="modal"
+        )
 
 
 class FixCodeView(discord.ui.View):
@@ -191,7 +193,7 @@ class FixCodeView(discord.ui.View):
 
 
 async def handle_latex_compilation(
-    interaction: discord.Interaction, latex_code: str, dpi: int
+    interaction: discord.Interaction, latex_code: str, dpi: int, source: str = "slash"
 ):
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True)
@@ -213,7 +215,7 @@ async def handle_latex_compilation(
             dpi,
         )
         _safe_record_latex_event(
-            source="slash",
+            source=source,
             status="timeout",
             dpi=dpi,
             user_id=interaction.user.id,
@@ -235,7 +237,7 @@ async def handle_latex_compilation(
             dpi,
         )
         _safe_record_latex_event(
-            source="slash",
+            source=source,
             status="internal_error",
             dpi=dpi,
             user_id=interaction.user.id,
@@ -257,7 +259,7 @@ async def handle_latex_compilation(
             unique_id,
         )
         _safe_record_latex_event(
-            source="slash",
+            source=source,
             status="success",
             dpi=dpi,
             user_id=interaction.user.id,
@@ -269,7 +271,7 @@ async def handle_latex_compilation(
         _log_command_success(
             user_id=interaction.user.id,
             command="latex",
-            source="slash",
+            source=source,
             detail=f"request_id={unique_id}",
         )
         os.remove(f"{unique_id}.png")
@@ -281,7 +283,7 @@ async def handle_latex_compilation(
             str(output),
         )
         _safe_record_latex_event(
-            source="slash",
+            source=source,
             status="compile_error",
             dpi=dpi,
             user_id=interaction.user.id,
