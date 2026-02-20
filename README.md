@@ -23,6 +23,9 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 - Local monitoring dashboard with selectable windows (`24h`, `7d`, `30d`, `90d`) and trend charts
 - Optional `/talk-to-me` command powered by Google's Gemini ecosystem
 - Legacy `latex {LaTeX Code}` message command support in servers
+- Button to Edit Code Instead of retyping on Error
+<img width="650" height="175" alt="image" src="https://github.com/user-attachments/assets/75f48881-2fa7-4188-ba98-ac04fbadacff" />
+
 
 ## Technical Highlights
 
