@@ -182,7 +182,7 @@ class FixCodeView(discord.ui.View):
         self.latex_code = latex_code
         self.dpi = dpi
 
-    @discord.ui.button(label="Fix Code", style=discord.ButtonStyle.success, emoji="🔧")
+    @discord.ui.button(label="Fix Code", style=discord.ButtonStyle.danger, emoji="🔧")
     async def fix_code_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -262,7 +262,10 @@ async def handle_latex_compilation(
             dpi=dpi,
             user_id=interaction.user.id,
         )
-        await interaction.followup.send(file=discord.File(f"{unique_id}.png"))
+        file = discord.File(f"{unique_id}.png", filename=f"{unique_id}.png")
+        embed = discord.Embed(color=Color.blue())
+        embed.set_image(url=f"attachment://{unique_id}.png")
+        await interaction.followup.send(embed=embed, file=file)
         _log_command_success(
             user_id=interaction.user.id,
             command="latex",
@@ -519,7 +522,10 @@ async def on_message(message):
                 dpi=275,
                 user_id=message.author.id,
             )
-            await channel.send(file=discord.File(f"{unique_id}.png"))
+            file = discord.File(f"{unique_id}.png", filename=f"{unique_id}.png")
+            embed = discord.Embed(color=Color.blue())
+            embed.set_image(url=f"attachment://{unique_id}.png")
+            await channel.send(embed=embed, file=file)
             _log_command_success(
                 user_id=message.author.id,
                 command="latex",
