@@ -35,8 +35,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 - **Persistent metrics**: LaTeX compile outcomes are stored in SQLite and visualized in a separate local dashboard service.
 - **Linux / Dockerized deployment**: Designed to be deployed on Linux based systems.
 
-<img width="700" height="1269" alt="Discord Bot Dashboard" src="https://github.com/user-attachments/assets/70022311-b329-437a-9c1f-62484ff580c5" />
-
+<img width="700" height="1269" alt="image" src="https://github.com/user-attachments/assets/6cb1af36-52ff-4f81-981d-d17fe5f6830a" />
 
 
 ## Commands
