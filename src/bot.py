@@ -154,7 +154,7 @@ async def on_ready():
 # ===== UI Components & Helpers =====
 
 
-DEFAULT_DPI = 275
+DEFAULT_DPI = 300
 
 
 class LatexCodeModal(discord.ui.Modal):
