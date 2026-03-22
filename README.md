@@ -189,8 +189,9 @@ python -m unittest tests.test_bot_modal_flow
 - `/latex` now opens a modal editor instead of taking inline slash-command arguments.
 - `/latex-inline` provides a direct single-line slash-command option for quick expressions.
 - If you include a full `\documentclass ...` block, the bot treats it as a document render path.
-- For standard inline usage, include delimiters such as `$...$`, `$$...$$`, or `\[...\]`.
-- The modal-first flow uses the default render DPI of `275`.
+- If you submit plain math without delimiters, the bot auto-wraps it as `\[...\]`.
+- Existing delimiters such as `$...$`, `$$...$$`, and `\[...\]` are still accepted.
+- The modal-first flow uses the default render DPI of `300`.
 - Large requests and high DPI are constrained to protect responsiveness.
 
 ## Local Monitoring Dashboard
