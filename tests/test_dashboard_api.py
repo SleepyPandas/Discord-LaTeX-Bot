@@ -172,6 +172,25 @@ class DashboardApiTestCase(unittest.TestCase):
         self.assertEqual(rows[2][0], "1")
         self.assertEqual(rows[2][3], "success")
 
+    def test_format_uptime_human_readable(self):
+        self.assertEqual(dashboard_app._format_uptime(45), "45s")
+        self.assertEqual(dashboard_app._format_uptime(125), "2m 5s")
+        self.assertEqual(dashboard_app._format_uptime(3725), "1h 2m 5s")
+
+    def test_determine_update_status(self):
+        self.assertEqual(dashboard_app._determine_update_status("unknown", "abc123"), "unknown")
+        self.assertEqual(dashboard_app._determine_update_status("", "abc123"), "unknown")
+        self.assertEqual(dashboard_app._determine_update_status("abc123", ""), "unknown")
+        self.assertEqual(dashboard_app._determine_update_status("abc123", "abc123ff"), "up_to_date")
+        self.assertEqual(dashboard_app._determine_update_status("abc123", "def456"), "update_available")
+
+    def test_increment_restart_count_persists_in_db(self):
+        first = dashboard_app._increment_restart_count(self.db_path, "2026-03-22T00:00:00+00:00")
+        second = dashboard_app._increment_restart_count(self.db_path, "2026-03-22T00:05:00+00:00")
+
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
