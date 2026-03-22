@@ -574,5 +574,5 @@ async def on_message(message):
     # must be used to process commands else they are overwritten by on_message
     await bot.process_commands(message)
 
-
-bot.run(os.getenv("DISCORD_TOKEN"))
+if __name__ == "__main__":
+    bot.run(os.getenv("DISCORD_TOKEN"))
