@@ -2,7 +2,7 @@
 .gitignore
 .venv
 __pycache__
-.env
+**/*.env
 .idea
 *.pyc
 *.pyo
