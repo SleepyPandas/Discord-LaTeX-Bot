@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from aiohttp import web
+from aiohttp import ClientSession, ClientTimeout, web
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -22,6 +22,7 @@ WINDOW_HOURS_BY_KEY = {
     "90d": 90 * 24,
 }
 DEFAULT_WINDOW_KEY = "90d"
+RUNTIME_CACHE_TTL_SECONDS = 300
 LOGGER = logging.getLogger(__name__)
 
 
@@ -36,6 +37,164 @@ def get_dashboard_username() -> str:
 
 def get_dashboard_password() -> str:
     return os.getenv("DASHBOARD_PASSWORD", "change-me")
+
+
+def get_app_version() -> str:
+    return os.getenv("APP_VERSION") or os.getenv("IMAGE_VERSION", "unknown")
+
+
+def get_build_date() -> str:
+    return os.getenv("BUILD_DATE", "unknown")
+
+
+def get_git_sha() -> str:
+    return os.getenv("GIT_SHA", "unknown")
+
+
+def get_dashboard_github_repo() -> str:
+    return os.getenv("DASHBOARD_GITHUB_REPO", "SleepyPandas/Discord-LaTeX-Bot")
+
+
+def get_dashboard_github_branch() -> str:
+    return os.getenv("DASHBOARD_GITHUB_BRANCH", "main")
+
+
+def get_github_token() -> str:
+    return os.getenv("GITHUB_TOKEN", "")
+
+
+def _format_uptime(seconds: int) -> str:
+    total = max(0, int(seconds))
+    days, remainder = divmod(total, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if days > 0:
+        return f"{days}d {hours}h {minutes}m"
+    if hours > 0:
+        return f"{hours}h {minutes}m {secs}s"
+    if minutes > 0:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
+
+def _determine_update_status(running_sha: str, main_sha: str) -> str:
+    run = (running_sha or "").strip().lower()
+    latest = (main_sha or "").strip().lower()
+    if not run or run == "unknown" or not latest:
+        return "unknown"
+    if run == latest or latest.startswith(run) or run.startswith(latest):
+        return "up_to_date"
+    return "update_available"
+
+
+def _increment_restart_count(db_path: str, started_at_iso: str) -> int:
+    db_file = Path(db_path)
+    try:
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        LOGGER.exception("Failed to create parent directory for db=%s", db_path)
+        return 1
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dashboard_runtime_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                """
+            )
+            row = conn.execute(
+                "SELECT value FROM dashboard_runtime_meta WHERE key = 'restart_count';"
+            ).fetchone()
+            current_count = 0
+            if row and row[0] is not None:
+                try:
+                    current_count = int(row[0])
+                except (TypeError, ValueError):
+                    current_count = 0
+            restart_count = current_count + 1
+            conn.execute(
+                """
+                INSERT INTO dashboard_runtime_meta (key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                """,
+                ("restart_count", str(restart_count)),
+            )
+            conn.execute(
+                """
+                INSERT INTO dashboard_runtime_meta (key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                """,
+                ("last_started_at", started_at_iso),
+            )
+            conn.commit()
+            return restart_count
+    except sqlite3.Error:
+        LOGGER.exception("Failed to update restart count in db=%s", db_path)
+        return 1
+
+
+async def _fetch_latest_main_sha(repo: str, branch: str, token: str) -> str:
+    timeout = ClientTimeout(total=4)
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "latex-dashboard-monitor",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    url = f"https://api.github.com/repos/{repo}/commits/{branch}"
+    async with ClientSession(timeout=timeout) as session:
+        async with session.get(url, headers=headers) as response:
+            if response.status != 200:
+                body = await response.text()
+                raise RuntimeError(f"github_status={response.status} body={body[:200]}")
+            payload = await response.json()
+
+    sha = str(payload.get("sha", "")).strip()
+    if not sha:
+        raise RuntimeError("missing sha in GitHub response")
+    return sha
+
+
+async def _runtime_update_status(app: web.Application) -> dict:
+    now = datetime.now(timezone.utc)
+    cache = app["runtime_update_cache"]
+    checked_at = cache.get("checked_at")
+    cached_payload = cache.get("payload")
+    if checked_at and cached_payload:
+        age_seconds = (now - checked_at).total_seconds()
+        if age_seconds < RUNTIME_CACHE_TTL_SECONDS:
+            return cached_payload
+
+    running_sha = app["runtime_git_sha"]
+    repo = app["runtime_github_repo"]
+    branch = app["runtime_github_branch"]
+    token = app["runtime_github_token"]
+
+    main_sha = ""
+    error = ""
+    try:
+        main_sha = await _fetch_latest_main_sha(repo, branch, token)
+    except Exception as exc:
+        error = str(exc)
+        LOGGER.warning("Failed to fetch GitHub main SHA: %s", error)
+
+    payload = {
+        "github_repo": repo,
+        "github_branch": branch,
+        "main_sha": main_sha,
+        "update_status": _determine_update_status(running_sha, main_sha),
+        "checked_at": now.isoformat(timespec="seconds"),
+        "error": error,
+    }
+    cache["checked_at"] = now
+    cache["payload"] = payload
+    return payload
 
 
 def _window_start_iso(hours: int = 24) -> str:
@@ -410,17 +569,56 @@ async def api_events_export(request: web.Request) -> web.Response:
     )
 
 
+async def api_runtime(request: web.Request) -> web.Response:
+    now = datetime.now(timezone.utc)
+    started_at = request.app["runtime_started_at"]
+    uptime_seconds = int((now - started_at).total_seconds())
+    update_data = await _runtime_update_status(request.app)
+
+    return web.json_response(
+        {
+            "uptime_seconds": max(0, uptime_seconds),
+            "uptime_human": _format_uptime(uptime_seconds),
+            "restart_count": request.app["runtime_restart_count"],
+            "app_version": request.app["runtime_app_version"],
+            "build_date": request.app["runtime_build_date"],
+            "git_sha": request.app["runtime_git_sha"],
+            "github_repo": update_data.get("github_repo", ""),
+            "github_branch": update_data.get("github_branch", ""),
+            "main_sha": update_data.get("main_sha", ""),
+            "update_status": update_data.get("update_status", "unknown"),
+            "update_checked_at": update_data.get("checked_at", ""),
+            "update_error": update_data.get("error", ""),
+            "generated_at": now.isoformat(timespec="seconds"),
+        }
+    )
+
+
 def create_app() -> web.Application:
     app = web.Application(middlewares=[basic_auth_middleware])
     app["metrics_db_path"] = get_metrics_db_path()
     app["dashboard_username"] = get_dashboard_username()
     app["dashboard_password"] = get_dashboard_password()
+    started_at = datetime.now(timezone.utc)
+    app["runtime_started_at"] = started_at
+    app["runtime_app_version"] = get_app_version()
+    app["runtime_build_date"] = get_build_date()
+    app["runtime_git_sha"] = get_git_sha()
+    app["runtime_github_repo"] = get_dashboard_github_repo()
+    app["runtime_github_branch"] = get_dashboard_github_branch()
+    app["runtime_github_token"] = get_github_token()
+    app["runtime_restart_count"] = _increment_restart_count(
+        app["metrics_db_path"],
+        started_at.isoformat(timespec="seconds"),
+    )
+    app["runtime_update_cache"] = {"checked_at": None, "payload": None}
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
     app.router.add_get("/api/summary", api_summary)
     app.router.add_get("/api/timeseries", api_timeseries)
     app.router.add_get("/api/events", api_events)
     app.router.add_get("/api/events/export.csv", api_events_export)
+    app.router.add_get("/api/runtime", api_runtime)
     app.router.add_static("/static", STATIC_DIR)
     return app
 
