@@ -37,6 +37,21 @@ class LatexModuleTestCase(unittest.TestCase):
 
         self.assertEqual(result, "LaTeX compile error: Missing delimiter.")
 
+    def test_remove_superfluous_wraps_plain_input_in_display_math(self):
+        result = latex_module.remove_superfluous(r"\frac{1}{2}")
+
+        self.assertEqual(result, r"\[\frac{1}{2}\]")
+
+    def test_remove_superfluous_preserves_existing_math_delimiters(self):
+        result = latex_module.remove_superfluous(r"\[\frac{1}{2}\]")
+
+        self.assertEqual(result, r"\[\frac{1}{2}\]")
+
+    def test_remove_superfluous_strips_legacy_prefix_before_wrapping(self):
+        result = latex_module.remove_superfluous(r"latex \alpha + \beta")
+
+        self.assertEqual(result, r"\[\alpha + \beta\]")
+
     def test_text_to_latex_returns_fallback_on_unknown_compile_failure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_base = str(Path(temp_dir) / "failed_render")

@@ -154,7 +154,10 @@ async def on_ready():
 # ===== UI Components & Helpers =====
 
 
-class FixCodeModal(discord.ui.Modal, title="Fix LaTeX Code"):
+DEFAULT_DPI = 300
+
+
+class LatexCodeModal(discord.ui.Modal):
     latex_input = discord.ui.TextInput(
         label="LaTeX Code",
         style=discord.TextStyle.long,
@@ -163,8 +166,14 @@ class FixCodeModal(discord.ui.Modal, title="Fix LaTeX Code"):
         max_length=4000,
     )
 
-    def __init__(self, original_code: str, dpi: int):
-        super().__init__()
+    def __init__(
+        self,
+        *,
+        original_code: str = "",
+        dpi: int = DEFAULT_DPI,
+        title: str = "Enter LaTeX Code",
+    ):
+        super().__init__(title=title)
         # If code prefix from on_message is included, strip it for editor
         if original_code.startswith("latex "):
             self.latex_input.default = original_code[6:]
@@ -188,12 +197,16 @@ class FixCodeView(discord.ui.View):
     async def fix_code_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        modal = FixCodeModal(original_code=self.latex_code, dpi=self.dpi)
+        modal = LatexCodeModal(
+            original_code=self.latex_code,
+            dpi=self.dpi,
+            title="Fix LaTeX Code",
+        )
         await interaction.response.send_modal(modal)
 
 
 async def handle_latex_compilation(
-    interaction: discord.Interaction, latex_code: str, dpi: int, source: str = "slash"
+    interaction: discord.Interaction, latex_code: str, dpi: int, source: str = "modal"
 ):
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True)
@@ -311,11 +324,26 @@ async def ping(interaction: discord.Interaction):
     _log_command_success(user_id=interaction.user.id, command="ping", source="slash")
 
 
-@bot.tree.command(name="latex", description="Complies Latex Code ~ in standalone Class")
+@bot.tree.command(name="latex", description="Open a modal to enter LaTeX code")
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 275):
-    await handle_latex_compilation(interaction, latex_code, dpi)
+async def latex(interaction: discord.Interaction):
+    await interaction.response.send_modal(LatexCodeModal(dpi=DEFAULT_DPI))
+
+
+@bot.tree.command(
+    name="latex-inline",
+    description="Render single-line LaTeX without opening the modal",
+)
+@app_commands.allowed_installs(guilds=True, users=True)
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+async def latex_inline(interaction: discord.Interaction, latex_code: str):
+    await handle_latex_compilation(
+        interaction,
+        latex_code,
+        DEFAULT_DPI,
+        source="inline",
+    )
 
 
 @bot.tree.command(name="help", description="See Features and Commands")
@@ -327,7 +355,7 @@ async def help(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Help! - Commands and Features",
         description="Hello!, I'm LaTeX Bot. I can compile your LaTeX code in discord. \n"
-        "To use me type '/latex' followed by your LaTeX code "
+        "Use '/latex' to open a modal editor for your code "
         "or type latex followed by latex code (server only)",
         color=Color.orange(),
     )
@@ -337,7 +365,8 @@ async def help(interaction: discord.Interaction):
         name="Commands",
         value="```"
         "/help                         To well get help\n\n"
-        "/latex {$$ latex code $$}     To compile LaTeX!\n\n"
+        "/latex                        Open the LaTeX editor modal\n\n"
+        "/latex-inline                 Single-line slash command input\n\n"
         "/talk-to-me                   Talk to me\n\n"
         "/ping                         See if I'm awake!\n\n"
         "latex {$$ latex code $$}      Without Slash Commands!\n\n"
@@ -349,8 +378,8 @@ async def help(interaction: discord.Interaction):
         name="Tips",
         value=r"""To get a past message press up arrow on your keyboard ↑. 
                                        A preamble is only needed if using a Tikz package otherwise 
-                                       a basic structure is added by default. However you still need 
-                                       delimiters e.g. $...$ or \\[...\\] or maybe $$..$$ """,
+                                       a basic structure is added by default. Missing math delimiters 
+                                       are auto-added as \\[...\\] when needed.""",
     )
     embed.set_footer(text=f"created by {name}")
     # noinspection PyUnresolvedReferences
@@ -561,5 +590,5 @@ async def on_message(message):
     # must be used to process commands else they are overwritten by on_message
     await bot.process_commands(message)
 
-
-bot.run(os.getenv("DISCORD_TOKEN"))
+if __name__ == "__main__":
+    bot.run(os.getenv("DISCORD_TOKEN"))
