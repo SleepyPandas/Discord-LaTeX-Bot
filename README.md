@@ -48,6 +48,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 | Command | Description |
 | --- | --- |
 | `/latex` | Open the LaTeX editor modal and render the submitted code into a PNG image. |
+| `/latex-inline <latex_code>` | Render single-line LaTeX directly from the slash command input. |
 | `/help` | Show command and usage guidance. |
 | `/ping` | Health check command. |
 | `/talk-to-me <message>` | Optional conversational command (requires Gemini token). |
@@ -186,6 +187,7 @@ python -m unittest tests.test_bot_modal_flow
 ## Usage Notes
 
 - `/latex` now opens a modal editor instead of taking inline slash-command arguments.
+- `/latex-inline` provides a direct single-line slash-command option for quick expressions.
 - If you include a full `\documentclass ...` block, the bot treats it as a document render path.
 - For standard inline usage, include delimiters such as `$...$`, `$$...$$`, or `\[...\]`.
 - The modal-first flow uses the default render DPI of `275`.
