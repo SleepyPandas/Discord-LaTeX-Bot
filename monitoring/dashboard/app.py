@@ -1,5 +1,7 @@
 import base64
+import csv
 import hmac
+import io
 import logging
 import os
 import sqlite3
@@ -275,6 +277,59 @@ def _query_events(db_path: str, limit: int) -> list[dict]:
     return events
 
 
+def _query_all_events(db_path: str) -> list[dict]:
+    if not Path(db_path).exists():
+        return []
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT id, created_at, source, status, dpi, user_id, error_message
+                FROM latex_events
+                ORDER BY id DESC;
+                """
+            ).fetchall()
+    except sqlite3.Error:
+        LOGGER.exception("Failed to query all events from db=%s", db_path)
+        return []
+
+    events = []
+    for row in rows:
+        events.append(
+            {
+                "id": row["id"],
+                "created_at": row["created_at"],
+                "source": row["source"],
+                "status": row["status"],
+                "dpi": row["dpi"],
+                "user_id": row["user_id"],
+                "error_message": row["error_message"],
+            }
+        )
+    return events
+
+
+def _events_to_csv(events: list[dict]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["id", "created_at", "source", "status", "dpi", "user_id", "error_message"])
+    for event in events:
+        writer.writerow(
+            [
+                event.get("id"),
+                event.get("created_at"),
+                event.get("source"),
+                event.get("status"),
+                event.get("dpi"),
+                event.get("user_id"),
+                event.get("error_message"),
+            ]
+        )
+    return buffer.getvalue()
+
+
 def _unauthorized() -> web.Response:
     return web.Response(
         status=401,
@@ -343,6 +398,18 @@ async def api_events(request: web.Request) -> web.Response:
     return web.json_response({"events": events, "limit": limit})
 
 
+async def api_events_export(request: web.Request) -> web.Response:
+    events = _query_all_events(request.app["metrics_db_path"])
+    csv_payload = _events_to_csv(events)
+    filename = f"latex-events-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
+    return web.Response(
+        text=csv_payload,
+        content_type="text/csv",
+        charset="utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def create_app() -> web.Application:
     app = web.Application(middlewares=[basic_auth_middleware])
     app["metrics_db_path"] = get_metrics_db_path()
@@ -353,6 +420,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/summary", api_summary)
     app.router.add_get("/api/timeseries", api_timeseries)
     app.router.add_get("/api/events", api_events)
+    app.router.add_get("/api/events/export.csv", api_events_export)
     app.router.add_static("/static", STATIC_DIR)
     return app
 

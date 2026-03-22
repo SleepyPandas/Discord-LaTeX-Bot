@@ -95,6 +95,28 @@ body {
   box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.16);
 }
 
+.action-link {
+  border: 1px solid #3a3e47;
+  border-radius: 8px;
+  background: #252830;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 10px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.action-link:hover {
+  border-color: var(--accent);
+}
+
+.action-link:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.16);
+}
+
 .eyebrow {
   margin: 0 0 2px;
   font-size: 24px;
@@ -344,6 +366,9 @@ code {
   }
   .range-select {
     min-width: 140px;
+  }
+  .action-link {
+    text-align: center;
   }
   .panel-head {
     flex-direction: column;
