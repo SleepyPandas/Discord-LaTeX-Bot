@@ -75,7 +75,7 @@ class Latex2PNG(LatexCompiler):
         png_results = []
         pdf = super().compile(latex_code, images, compiler)
         with BytesIO(pdf) as pdf_file:
-            for i in pdf2image.convert_from_bytes(pdf_file.read(), dpi=dpi, thread_count=4, transparent=transparent):
+            for i in pdf2image.convert_from_bytes(pdf_file.read(), dpi=dpi, thread_count=1, transparent=transparent):
                 with BytesIO() as png_bytes:
                     i.save(png_bytes, 'PNG')
                     png_results.append(png_bytes.getvalue())

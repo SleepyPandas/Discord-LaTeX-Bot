@@ -6,9 +6,65 @@ from concurrent.futures import ThreadPoolExecutor
 
 from google.generativeai.types.generation_types import StopCandidateException
 
+import time
 import discord
 import uuid
 from discord import app_commands, Color
+
+class CompileQueue:
+    def __init__(self, max_concurrent: int = 3, max_queued: int = 20):
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._waiting = 0
+        self._max_queued = max_queued
+
+    async def execute(self, loop, func, *args, notify_coro=None, timeout=15.0, user_id=None, source="slash", dpi=275):
+        if self._waiting >= self._max_queued:
+            _safe_record_latex_event(source=source, status="rejected", dpi=dpi, user_id=user_id, error_message="Queue full")
+            if notify_coro:
+                embed = discord.Embed(
+                    title="Server Busy",
+                    description="The compile queue is currently full. Please try again in a moment.",
+                    color=Color.red(),
+                )
+                await notify_coro(embed=embed, ephemeral=True)
+            return "REJECTED"
+
+        self._waiting += 1
+        position = self._waiting
+        queued_msg = None
+        
+        if self._semaphore.locked():
+            _safe_record_latex_event(source=source, status="queued", dpi=dpi, user_id=user_id)
+            if notify_coro:
+                embed = discord.Embed(
+                    title="Queued",
+                    description=f"You are #{position} in the compile queue. Estimated wait: ~{position * timeout / 3:.0f}s.",
+                    color=Color.orange(),
+                )
+                try:
+                    queued_msg = await notify_coro(embed=embed)
+                except Exception:
+                    pass
+
+        await self._semaphore.acquire()
+        self._waiting -= 1
+
+        if queued_msg:
+            try:
+                await queued_msg.delete()
+            except Exception:
+                pass
+
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(executor, func, *args),
+                timeout=timeout,
+            )
+        finally:
+            self._semaphore.release()
+
+compile_queue = CompileQueue(max_concurrent=3, max_queued=20)
+
 from discord.ext import commands
 from latex_module import *
 from logging_config import configure_logging
@@ -83,10 +139,11 @@ try:
 except Exception:
     logger.exception("Failed to initialize metrics database path=%s", METRICS_DB_PATH)
 
-# Allocate 4 threads to be used concurrently
-executor = ThreadPoolExecutor(max_workers=4)
-intents = discord.Intents.all()
+# Allocate 3 threads to be used concurrently (tuned for Pi 3)
+executor = ThreadPoolExecutor(max_workers=3)
+intents = discord.Intents.default()
 intents.message_content = True
+intents.guilds = True
 activity = discord.Activity(
     type=discord.ActivityType.playing, name="/help for well, help"
 )
@@ -215,11 +272,16 @@ async def handle_latex_compilation(
     unique_id = message_id[7:14]
     loop = asyncio.get_running_loop()
 
+    async def notify_slash(embed, ephemeral=False):
+        return await interaction.followup.send(embed=embed, ephemeral=ephemeral, wait=True)
+
     try:
-        output = await asyncio.wait_for(
-            loop.run_in_executor(executor, text_to_latex, latex_code, unique_id, dpi),
-            timeout=10.0,
+        output = await compile_queue.execute(
+            loop, text_to_latex, latex_code, unique_id, dpi,
+            notify_coro=notify_slash, timeout=15.0, user_id=interaction.user.id, source=source, dpi=dpi
         )
+        if output == "REJECTED":
+            return
     except asyncio.TimeoutError:
         logger.warning(
             "LaTeX compile timeout user_id=%s request_id=%s dpi=%s",
@@ -488,15 +550,17 @@ async def on_message(message):
 
         loop = asyncio.get_running_loop()
 
-        # Set a timeout of 10 seconds
+        async def notify_legacy(embed, ephemeral=False):
+            return await channel.send(embed=embed, silent=True)
+
+        # Set a timeout of 15 seconds
         try:
-            # Run method concurrently with other loop and wait for result.
-            output = await asyncio.wait_for(
-                loop.run_in_executor(
-                    executor, text_to_latex, latex_code, unique_id, 275
-                ),
-                timeout=10.0,  # Timeout in seconds
+            output = await compile_queue.execute(
+                loop, text_to_latex, latex_code, unique_id, 275,
+                notify_coro=notify_legacy, timeout=15.0, user_id=message.author.id, source="legacy", dpi=275
             )
+            if output == "REJECTED":
+                return
         except asyncio.TimeoutError:
             logger.warning(
                 "Legacy latex timeout author_id=%s request_id=%s",
