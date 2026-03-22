@@ -378,8 +378,8 @@ async def help(interaction: discord.Interaction):
         name="Tips",
         value=r"""To get a past message press up arrow on your keyboard ↑. 
                                        A preamble is only needed if using a Tikz package otherwise 
-                                       a basic structure is added by default. However you still need 
-                                       delimiters e.g. $...$ or \\[...\\] or maybe $$..$$ """,
+                                       a basic structure is added by default. Missing math delimiters 
+                                       are auto-added as \\[...\\] when needed.""",
     )
     embed.set_footer(text=f"created by {name}")
     # noinspection PyUnresolvedReferences
