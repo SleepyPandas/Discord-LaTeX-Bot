@@ -191,14 +191,16 @@ async def update_presence():
     await bot.change_presence(activity=activity)
     logger.info("Presence updated successfully")
 
-
+# this is used for a sheild.io badge nothing else 
 def _collect_user_stats() -> dict[str, int]:
     guilds = list(bot.guilds)
+    guild_users = sum((guild.member_count or 0) for guild in guilds)
+    individual_users = get_manual_users_count()
     return {
-        "users": len(bot.users),
+        "users": guild_users + individual_users,
         "guilds": len(guilds),
-        "guild_users": sum((guild.member_count or 0) for guild in guilds),
-        "individual_users": get_manual_users_count(),
+        "guild_users": guild_users,
+        "individual_users": individual_users,
     }
 
 

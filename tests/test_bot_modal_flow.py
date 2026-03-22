@@ -315,7 +315,7 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertEqual(
             snapshot,
             {
-                "users": 4,
+                "users": 25,
                 "guilds": 3,
                 "guild_users": 12,
                 "individual_users": 13,
