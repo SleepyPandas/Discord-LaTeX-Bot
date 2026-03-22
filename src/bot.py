@@ -141,7 +141,21 @@ except Exception:
 
 # Allocate 3 threads to be used concurrently (tuned for Pi 3)
 executor = ThreadPoolExecutor(max_workers=3)
-intents = discord.Intents.default()
+
+
+def _create_intents():
+    default_factory = getattr(discord.Intents, "default", None)
+    if callable(default_factory):
+        return default_factory()
+
+    all_factory = getattr(discord.Intents, "all", None)
+    if callable(all_factory):
+        return all_factory()
+
+    return discord.Intents()
+
+
+intents = _create_intents()
 intents.message_content = True
 intents.guilds = True
 activity = discord.Activity(

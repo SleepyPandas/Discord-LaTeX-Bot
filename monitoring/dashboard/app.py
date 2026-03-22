@@ -100,7 +100,7 @@ def _query_summary(db_path: str, window_key: str) -> dict:
                 conn,
                 """
                 SELECT COUNT(*) FROM latex_events
-                WHERE created_at >= ? AND status IN (?, ?, ?);
+                WHERE created_at >= ? AND status IN (?, ?, ?, ?);
                 """,
                 (threshold, *ERROR_STATUSES),
             )
