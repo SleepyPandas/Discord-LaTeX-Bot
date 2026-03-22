@@ -7,7 +7,7 @@ services:
       METRICS_DB_PATH: /data/metrics.db
     volumes:
       - ./data:/data
-    mem_limit: 768m
+    mem_limit: 640m
     logging:
       driver: "json-file"
       options:
@@ -27,7 +27,7 @@ services:
       - "8081:8081"
     volumes:
       - ./data:/data
-    mem_limit: 256m
+    mem_limit: 128m
     logging:
       driver: "json-file"
       options:

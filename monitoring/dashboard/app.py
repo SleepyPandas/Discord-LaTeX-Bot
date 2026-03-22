@@ -12,7 +12,7 @@ from aiohttp import web
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
-ERROR_STATUSES = ("timeout", "compile_error", "internal_error")
+ERROR_STATUSES = ("timeout", "compile_error", "internal_error", "rejected")
 WINDOW_HOURS_BY_KEY = {
     "24h": 24,
     "7d": 7 * 24,
@@ -70,6 +70,7 @@ def _query_summary(db_path: str, window_key: str) -> dict:
         "attempts": 0,
         "successes": 0,
         "errors": 0,
+        "queued": 0,
         "error_rate_percent": 0.0,
         "by_source": {},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -82,7 +83,12 @@ def _query_summary(db_path: str, window_key: str) -> dict:
         with sqlite3.connect(db_path) as conn:
             response["attempts"] = _fetch_one_int(
                 conn,
-                "SELECT COUNT(*) FROM latex_events WHERE created_at >= ?;",
+                "SELECT COUNT(*) FROM latex_events WHERE created_at >= ? AND status != 'queued';",
+                (threshold,),
+            )
+            response["queued"] = _fetch_one_int(
+                conn,
+                "SELECT COUNT(*) FROM latex_events WHERE created_at >= ? AND status = 'queued';",
                 (threshold,),
             )
             response["successes"] = _fetch_one_int(
@@ -110,12 +116,15 @@ def _query_summary(db_path: str, window_key: str) -> dict:
                 (threshold,),
             ).fetchall()
             for source, status, total in rows:
-                bucket = by_source.setdefault(source, {"attempts": 0, "errors": 0, "successes": 0})
-                bucket["attempts"] += int(total)
+                bucket = by_source.setdefault(source, {"attempts": 0, "errors": 0, "successes": 0, "queued": 0})
+                if status != "queued":
+                    bucket["attempts"] += int(total)
                 if status == "success":
                     bucket["successes"] += int(total)
-                if status in ERROR_STATUSES:
+                elif status in ERROR_STATUSES:
                     bucket["errors"] += int(total)
+                elif status == "queued":
+                    bucket["queued"] += int(total)
             response["by_source"] = by_source
     except sqlite3.Error:
         LOGGER.exception("Failed to query summary from db=%s", db_path)
@@ -182,11 +191,13 @@ def _query_timeseries(db_path: str, window_key: str) -> dict:
             "attempts": [0] * bucket_count,
             "successes": [0] * bucket_count,
             "errors": [0] * bucket_count,
+            "queued": [0] * bucket_count,
         },
         "errors_by_status": {
             "timeout": [0] * bucket_count,
             "compile_error": [0] * bucket_count,
             "internal_error": [0] * bucket_count,
+            "rejected": [0] * bucket_count,
         },
         "by_source": {},
         "generated_at": now_utc.isoformat(timespec="seconds"),
@@ -224,13 +235,17 @@ def _query_timeseries(db_path: str, window_key: str) -> dict:
         if index < 0 or index >= bucket_count:
             continue
 
-        response["totals"]["attempts"][index] += 1
         status = row["status"]
+        if status != "queued":
+            response["totals"]["attempts"][index] += 1
+
         if status == "success":
             response["totals"]["successes"][index] += 1
         elif status in ERROR_STATUSES:
             response["totals"]["errors"][index] += 1
             response["errors_by_status"][status][index] += 1
+        elif status == "queued":
+            response["totals"]["queued"][index] += 1
 
         source = row["source"]
         source_series = response["by_source"].setdefault(source, [0] * bucket_count)
