@@ -154,7 +154,10 @@ async def on_ready():
 # ===== UI Components & Helpers =====
 
 
-class FixCodeModal(discord.ui.Modal, title="Fix LaTeX Code"):
+DEFAULT_DPI = 275
+
+
+class LatexCodeModal(discord.ui.Modal):
     latex_input = discord.ui.TextInput(
         label="LaTeX Code",
         style=discord.TextStyle.long,
@@ -163,8 +166,14 @@ class FixCodeModal(discord.ui.Modal, title="Fix LaTeX Code"):
         max_length=4000,
     )
 
-    def __init__(self, original_code: str, dpi: int):
-        super().__init__()
+    def __init__(
+        self,
+        *,
+        original_code: str = "",
+        dpi: int = DEFAULT_DPI,
+        title: str = "Enter LaTeX Code",
+    ):
+        super().__init__(title=title)
         # If code prefix from on_message is included, strip it for editor
         if original_code.startswith("latex "):
             self.latex_input.default = original_code[6:]
@@ -188,7 +197,11 @@ class FixCodeView(discord.ui.View):
     async def fix_code_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        modal = FixCodeModal(original_code=self.latex_code, dpi=self.dpi)
+        modal = LatexCodeModal(
+            original_code=self.latex_code,
+            dpi=self.dpi,
+            title="Fix LaTeX Code",
+        )
         await interaction.response.send_modal(modal)
 
 
@@ -311,11 +324,11 @@ async def ping(interaction: discord.Interaction):
     _log_command_success(user_id=interaction.user.id, command="ping", source="slash")
 
 
-@bot.tree.command(name="latex", description="Complies Latex Code ~ in standalone Class")
+@bot.tree.command(name="latex", description="Open a modal to enter LaTeX code")
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-async def latex(interaction: discord.Interaction, latex_code: str, dpi: int = 275):
-    await handle_latex_compilation(interaction, latex_code, dpi)
+async def latex(interaction: discord.Interaction):
+    await interaction.response.send_modal(LatexCodeModal(dpi=DEFAULT_DPI))
 
 
 @bot.tree.command(name="help", description="See Features and Commands")
