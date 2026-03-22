@@ -133,10 +133,6 @@ jobs:
           tags: sleepypandas/discord-latex-bot-base:pr-validation
           platforms: linux/arm64
           push: false
-          cache-from: |
-            type=gha,scope=bot-base
-            type=registry,ref=${{ env.BOT_BASE_IMAGE }}:buildcache
-          cache-to: type=gha,mode=max,scope=bot-base
 
       - name: Build bot image for PR validation
         uses: docker/build-push-action@v5
@@ -149,10 +145,6 @@ jobs:
             BOT_BASE_IMAGE=${{ env.PR_BOT_BASE_IMAGE }}
           platforms: linux/arm64
           push: false
-          cache-from: |
-            type=gha,scope=bot
-            type=registry,ref=${{ env.BOT_IMAGE }}:buildcache
-          cache-to: type=gha,mode=max,scope=bot
 
   build-and-push-bot-image:
     needs:
