@@ -1,28 +1,5 @@
-# Use an official Python runtime as a parent image
-FROM python:3.12-slim
-
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-
-# We keep 'build-essential' to help compile Python libraries if needed.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    texlive-latex-base \
-    texlive-latex-extra \
-    texlive-latex-recommended \
-    texlive-fonts-recommended \
-    texlive-pictures \
-    texlive-plain-generic \
-    dvipng \
-    poppler-utils \
-    ghostscript \
-    build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set the working directory
-WORKDIR /app
+ARG BOT_BASE_IMAGE=ghcr.io/sleepypandas/discord-latex-bot-base:py312-texlive
+FROM ${BOT_BASE_IMAGE}
 
 # Copy requirements
 COPY src/requirements.txt /app/
