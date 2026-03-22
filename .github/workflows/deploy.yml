@@ -41,6 +41,7 @@ jobs:
           filters: |
             bot_base:
               - 'Dockerfile.bot-base'
+              - '.github/workflows/deploy.yml'
             bot:
               - 'Dockerfile'
               - 'Dockerfile.bot-base'
