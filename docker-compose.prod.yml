@@ -1,17 +1,12 @@
 services:
   latex-bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    platform: linux/arm64
+    image: ghcr.io/sleepypandas/discord-latex-bot:latest
     env_file:
-      - src/.env
+      - .env
     environment:
       METRICS_DB_PATH: /data/metrics.db
-    working_dir: /app
     volumes:
-      - .:/app
-      - ./monitoring/data:/data
+      - ./data:/data
     mem_limit: 640m
     logging:
       driver: "json-file"
@@ -21,10 +16,7 @@ services:
     restart: unless-stopped
 
   dashboard:
-    build:
-      context: .
-      dockerfile: monitoring/dashboard/Dockerfile
-    platform: linux/arm64
+    image: ghcr.io/sleepypandas/discord-latex-bot-dashboard:latest
     environment:
       METRICS_DB_PATH: /data/metrics.db
       DASHBOARD_HOST: 0.0.0.0
@@ -34,11 +26,19 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - ./monitoring/data:/data
+      - ./data:/data
     mem_limit: 128m
     logging:
       driver: "json-file"
       options:
         max-size: "5m"
         max-file: "5"
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Watchtower checks every 5 minutes (300 seconds) for new images and cleans up the old ones to save disk space
+    command: --interval 300 --cleanup
     restart: unless-stopped
