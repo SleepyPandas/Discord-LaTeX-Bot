@@ -65,10 +65,11 @@ class CompileQueue:
 
 compile_queue = CompileQueue(max_concurrent=3, max_queued=20)
 
-from discord.ext import commands
+from discord.ext import commands, tasks
 from latex_module import *
 from logging_config import configure_logging
 from metrics_store import init_metrics_db, record_latex_event
+from stats import get_manual_users_count, update_stats
 
 from dotenv import load_dotenv
 
@@ -190,6 +191,39 @@ async def update_presence():
     await bot.change_presence(activity=activity)
     logger.info("Presence updated successfully")
 
+# this is used for a sheild.io badge nothing else 
+def _collect_user_stats() -> dict[str, int]:
+    guilds = list(bot.guilds)
+    guild_users = sum((guild.member_count or 0) for guild in guilds)
+    individual_users = get_manual_users_count()
+    return {
+        "users": guild_users + individual_users,
+        "guilds": len(guilds),
+        "guild_users": guild_users,
+        "individual_users": individual_users,
+    }
+
+
+@tasks.loop(hours=1)
+async def update_gist_stats_task():
+    stats_snapshot = _collect_user_stats()
+    success = await update_stats(**stats_snapshot)
+    if success:
+        logger.info(
+            "Updated user stats gist users=%s guilds=%s guild_users=%s individual_users=%s",
+            stats_snapshot["users"],
+            stats_snapshot["guilds"],
+            stats_snapshot["guild_users"],
+            stats_snapshot["individual_users"],
+        )
+    else:
+        logger.warning("Failed to update user stats gist")
+
+
+@update_gist_stats_task.before_loop
+async def before_update_gist_stats_task():
+    await bot.wait_until_ready()
+
 
 # ==== initializer ====
 
@@ -204,6 +238,10 @@ async def on_ready():
         logger.exception("Failed to sync command tree")
 
     await update_presence()
+
+    if not update_gist_stats_task.is_running():
+        update_gist_stats_task.start()
+        logger.info("Started hourly gist stats updater")
 
     # Debug Check
 

@@ -5,7 +5,7 @@ import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -133,10 +133,34 @@ def _install_bot_import_stubs() -> None:
         async def sync(self):
             return []
 
+    class DummyLoop:
+        def __init__(self, coro):
+            self.coro = coro
+            self._running = False
+            self._before_loop = None
+
+        def before_loop(self, func):
+            self._before_loop = func
+            return func
+
+        def start(self):
+            self._running = True
+
+        def is_running(self):
+            return self._running
+
+    def dummy_loop(*args, **kwargs):
+        def decorator(func):
+            return DummyLoop(func)
+
+        return decorator
+
     class DummyBot:
         def __init__(self, *args, **kwargs):
             self.tree = DummyTree()
             self.user = "stub-bot"
+            self.guilds = []
+            self.users = []
 
         def event(self, func):
             return func
@@ -145,6 +169,9 @@ def _install_bot_import_stubs() -> None:
             return None
 
         async def process_commands(self, *args, **kwargs):
+            return None
+
+        async def wait_until_ready(self):
             return None
 
         def run(self, *args, **kwargs):
@@ -177,7 +204,9 @@ def _install_bot_import_stubs() -> None:
 
     ext_module = types.ModuleType("discord.ext")
     commands_module = types.ModuleType("discord.ext.commands")
+    tasks_module = types.ModuleType("discord.ext.tasks")
     commands_module.Bot = DummyBot
+    tasks_module.loop = dummy_loop
 
     sys.modules["google"] = google_module
     sys.modules["google.generativeai"] = generativeai_module
@@ -191,6 +220,7 @@ def _install_bot_import_stubs() -> None:
     sys.modules["discord"] = discord_module
     sys.modules["discord.ext"] = ext_module
     sys.modules["discord.ext.commands"] = commands_module
+    sys.modules["discord.ext.tasks"] = tasks_module
 
 
 class BotModalFlowTestCase(unittest.TestCase):
@@ -270,6 +300,43 @@ class BotModalFlowTestCase(unittest.TestCase):
             "/latex-inline                 Single-line slash command input",
             embed.fields[0]["value"],
         )
+
+    def test_collect_user_stats_includes_manual_users_value(self):
+        self.bot.bot.guilds = [
+            SimpleNamespace(member_count=5),
+            SimpleNamespace(member_count=None),
+            SimpleNamespace(member_count=7),
+        ]
+        self.bot.bot.users = [1, 2, 3, 4]
+
+        with patch.object(self.bot, "get_manual_users_count", return_value=13):
+            snapshot = self.bot._collect_user_stats()
+
+        self.assertEqual(
+            snapshot,
+            {
+                "users": 25,
+                "guilds": 3,
+                "guild_users": 12,
+                "individual_users": 13,
+            },
+        )
+
+    def test_on_ready_starts_hourly_task_once(self):
+        sync_mock = AsyncMock(return_value=[])
+        update_presence_mock = AsyncMock()
+        task_mock = SimpleNamespace(
+            is_running=Mock(side_effect=[False, True]),
+            start=Mock(),
+        )
+
+        with patch.object(self.bot.bot.tree, "sync", sync_mock), patch.object(
+            self.bot, "update_presence", update_presence_mock
+        ), patch.object(self.bot, "update_gist_stats_task", task_mock):
+            asyncio.run(self.bot.on_ready())
+            asyncio.run(self.bot.on_ready())
+
+        task_mock.start.assert_called_once()
 
 
 if __name__ == "__main__":
