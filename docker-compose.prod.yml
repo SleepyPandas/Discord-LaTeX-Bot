@@ -36,7 +36,7 @@ services:
     restart: unless-stopped
 
   watchtower:
-    image: containrrr/watchtower:latest
+    image: nickfedor/watchtower:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # Watchtower checks every 5 minutes (300 seconds) for new images and cleans up the old ones to save disk space
