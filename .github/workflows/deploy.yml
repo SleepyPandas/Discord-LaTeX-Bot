@@ -42,8 +42,12 @@ jobs:
           platforms: linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ env.REGISTRY }}/sleepypandas/discord-latex-bot:latest
-          cache-from: type=gha,scope=bot
-          cache-to: type=gha,mode=max,scope=bot
+          cache-from: |
+            type=gha,scope=bot
+            type=registry,ref=${{ env.REGISTRY }}/sleepypandas/discord-latex-bot:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=bot
+            type=registry,ref=${{ env.REGISTRY }}/sleepypandas/discord-latex-bot:buildcache,mode=max
 
       - name: Build and push dashboard image
         uses: docker/build-push-action@v5
@@ -53,8 +57,12 @@ jobs:
           platforms: linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ env.REGISTRY }}/sleepypandas/discord-latex-bot-dashboard:latest
-          cache-from: type=gha,scope=dashboard
-          cache-to: type=gha,mode=max,scope=dashboard
+          cache-from: |
+            type=gha,scope=dashboard
+            type=registry,ref=${{ env.REGISTRY }}/sleepypandas/discord-latex-bot-dashboard:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=dashboard
+            type=registry,ref=${{ env.REGISTRY }}/sleepypandas/discord-latex-bot-dashboard:buildcache,mode=max
           
       - name: Clean up old bot images
         uses: actions/delete-package-versions@v5
