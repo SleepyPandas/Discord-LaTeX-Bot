@@ -95,6 +95,7 @@ def _install_bot_import_stubs() -> None:
         def __init__(self, *args, **kwargs):
             self.args = args
             self.kwargs = kwargs
+            self.fields = []
 
         def set_image(self, **kwargs):
             self.image_kwargs = kwargs
@@ -105,6 +106,7 @@ def _install_bot_import_stubs() -> None:
             return self
 
         def add_field(self, **kwargs):
+            self.fields.append(kwargs)
             return self
 
         def set_footer(self, **kwargs):
@@ -236,6 +238,22 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertEqual(modal.title, "Fix LaTeX Code")
         self.assertEqual(modal.dpi, 350)
         self.assertEqual(modal.latex_input.default, r"\alpha + \beta")
+
+    def test_help_command_describes_modal_first_latex_flow(self):
+        interaction = SimpleNamespace(
+            user=SimpleNamespace(id=123),
+            response=SimpleNamespace(send_message=AsyncMock()),
+        )
+
+        asyncio.run(self.bot.help(interaction))
+
+        interaction.response.send_message.assert_awaited_once()
+        embed = interaction.response.send_message.await_args.kwargs["embed"]
+        self.assertIn("open a modal editor", embed.kwargs["description"])
+        self.assertIn(
+            "/latex                        Open the LaTeX editor modal",
+            embed.fields[0]["value"],
+        )
 
 
 if __name__ == "__main__":

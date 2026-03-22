@@ -206,7 +206,7 @@ class FixCodeView(discord.ui.View):
 
 
 async def handle_latex_compilation(
-    interaction: discord.Interaction, latex_code: str, dpi: int, source: str = "slash"
+    interaction: discord.Interaction, latex_code: str, dpi: int, source: str = "modal"
 ):
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True)
@@ -340,7 +340,7 @@ async def help(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Help! - Commands and Features",
         description="Hello!, I'm LaTeX Bot. I can compile your LaTeX code in discord. \n"
-        "To use me type '/latex' followed by your LaTeX code "
+        "Use '/latex' to open a modal editor for your code "
         "or type latex followed by latex code (server only)",
         color=Color.orange(),
     )
@@ -350,7 +350,7 @@ async def help(interaction: discord.Interaction):
         name="Commands",
         value="```"
         "/help                         To well get help\n\n"
-        "/latex {$$ latex code $$}     To compile LaTeX!\n\n"
+        "/latex                        Open the LaTeX editor modal\n\n"
         "/talk-to-me                   Talk to me\n\n"
         "/ping                         See if I'm awake!\n\n"
         "latex {$$ latex code $$}      Without Slash Commands!\n\n"

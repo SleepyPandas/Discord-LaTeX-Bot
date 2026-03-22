@@ -16,7 +16,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 
 ## Core Features
 
-- `/latex` compiles LaTeX and posts a rendered PNG
+- `/latex` opens a modal where users can type or paste LaTeX, then renders a PNG
 - Supports inline expressions and full-document/TikZ workflows
 - Works in servers, DMs, and private channels
 - Uses timeout guards during rendering and AI responses
@@ -47,7 +47,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 
 | Command | Description |
 | --- | --- |
-| `/latex <latex_code> [dpi]` | Render LaTeX into a PNG image. |
+| `/latex` | Open the LaTeX editor modal and render the submitted code into a PNG image. |
 | `/help` | Show command and usage guidance. |
 | `/ping` | Health check command. |
 | `/talk-to-me <message>` | Optional conversational command (requires Gemini token). |
@@ -90,7 +90,10 @@ latex
 ### Inline Expression Example
 
 ```text
-/latex \[ \hat{f}(\xi) = \int_{-\infty}^{\infty} f(x) e^{-2\pi i \xi x} \, dx \]
+Run `/latex`, then paste:
+\[
+  \hat{f}(\xi) = \int_{-\infty}^{\infty} f(x) e^{-2\pi i \xi x} \, dx
+\]
 ```
 
 <div align="center">
@@ -177,12 +180,15 @@ Run these quick checks after code changes:
 python -m unittest tests.test_latex_module
 python -m unittest tests.test_metrics_store
 python -m unittest tests.test_dashboard_api
+python -m unittest tests.test_bot_modal_flow
 ```
 
 ## Usage Notes
 
+- `/latex` now opens a modal editor instead of taking inline slash-command arguments.
 - If you include a full `\documentclass ...` block, the bot treats it as a document render path.
 - For standard inline usage, include delimiters such as `$...$`, `$$...$$`, or `\[...\]`.
+- The modal-first flow uses the default render DPI of `275`.
 - Large requests and high DPI are constrained to protect responsiveness.
 
 ## Local Monitoring Dashboard
