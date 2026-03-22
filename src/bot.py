@@ -331,6 +331,21 @@ async def latex(interaction: discord.Interaction):
     await interaction.response.send_modal(LatexCodeModal(dpi=DEFAULT_DPI))
 
 
+@bot.tree.command(
+    name="latex-inline",
+    description="Render single-line LaTeX without opening the modal",
+)
+@app_commands.allowed_installs(guilds=True, users=True)
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+async def latex_inline(interaction: discord.Interaction, latex_code: str):
+    await handle_latex_compilation(
+        interaction,
+        latex_code,
+        DEFAULT_DPI,
+        source="inline",
+    )
+
+
 @bot.tree.command(name="help", description="See Features and Commands")
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -351,6 +366,7 @@ async def help(interaction: discord.Interaction):
         value="```"
         "/help                         To well get help\n\n"
         "/latex                        Open the LaTeX editor modal\n\n"
+        "/latex-inline                 Single-line slash command input\n\n"
         "/talk-to-me                   Talk to me\n\n"
         "/ping                         See if I'm awake!\n\n"
         "latex {$$ latex code $$}      Without Slash Commands!\n\n"

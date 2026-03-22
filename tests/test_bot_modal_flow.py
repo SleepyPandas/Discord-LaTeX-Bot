@@ -226,6 +226,18 @@ class BotModalFlowTestCase(unittest.TestCase):
             interaction, r"\frac{1}{2}", 300, source="modal"
         )
 
+    def test_latex_inline_command_routes_to_compile_handler(self):
+        interaction = SimpleNamespace()
+
+        with patch.object(
+            self.bot, "handle_latex_compilation", new=AsyncMock()
+        ) as mock_handler:
+            asyncio.run(self.bot.latex_inline(interaction, r"\alpha+\beta"))
+
+        mock_handler.assert_awaited_once_with(
+            interaction, r"\alpha+\beta", self.bot.DEFAULT_DPI, source="inline"
+        )
+
     def test_fix_code_button_opens_prefilled_modal(self):
         view = self.bot.FixCodeView("latex \\alpha + \\beta", 350)
         interaction = SimpleNamespace(response=SimpleNamespace(send_modal=AsyncMock()))
@@ -252,6 +264,10 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertIn("open a modal editor", embed.kwargs["description"])
         self.assertIn(
             "/latex                        Open the LaTeX editor modal",
+            embed.fields[0]["value"],
+        )
+        self.assertIn(
+            "/latex-inline                 Single-line slash command input",
             embed.fields[0]["value"],
         )
 
