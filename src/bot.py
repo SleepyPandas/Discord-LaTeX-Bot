@@ -144,14 +144,18 @@ except Exception:
 executor = ThreadPoolExecutor(max_workers=3)
 
 
-def _create_intents():
+def _create_intents() -> discord.Intents:
     default_factory = getattr(discord.Intents, "default", None)
     if callable(default_factory):
-        return default_factory()
+        intents = default_factory()
+        if isinstance(intents, discord.Intents):
+            return intents
 
     all_factory = getattr(discord.Intents, "all", None)
     if callable(all_factory):
-        return all_factory()
+        intents = all_factory()
+        if isinstance(intents, discord.Intents):
+            return intents
 
     return discord.Intents()
 
@@ -707,4 +711,7 @@ async def on_message(message):
     await bot.process_commands(message)
 
 if __name__ == "__main__":
-    bot.run(os.getenv("DISCORD_TOKEN"))
+    token = os.getenv("DISCORD_TOKEN")
+    if not token:
+        raise RuntimeError("DISCORD_TOKEN is not set")
+    bot.run(token)
