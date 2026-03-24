@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 # globals
 conversation_histories = {}
+MAX_AI_USERS = 50
 load_dotenv()
 
 genai.configure(api_key=os.getenv("GEMINI_TOKEN"))
@@ -34,6 +35,11 @@ def _ensure_system_instruction_in_history(history: list, system_instruction: str
 
 
 def create_chat_session(user_input: str, user_id: int) -> str:
+    # LRU eviction
+    if user_id not in conversation_histories and len(conversation_histories) >= MAX_AI_USERS:
+        oldest_user = next(iter(conversation_histories))
+        del conversation_histories[oldest_user]
+
     history = conversation_histories.get(user_id, [])
 
     generation_config = {

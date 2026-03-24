@@ -256,7 +256,34 @@ def remove_superfluous(expr: str) -> str:
     if r'\fill' in expr:
         expr = expr.replace(r'\fill[', r'\draw[fill=')
 
-    return expr
+    return _ensure_math_delimiters(expr)
+
+
+def _ensure_math_delimiters(expr: str) -> str:
+    """Wrap plain math input in display-math delimiters when missing."""
+    stripped = expr.strip()
+    if not stripped:
+        return stripped
+
+    if r"\documentclass" in stripped or r"\begin{document}" in stripped:
+        return stripped
+
+    if _has_explicit_math_delimiters(stripped):
+        return stripped
+
+    return rf"\[{stripped}\]"
+
+
+def _has_explicit_math_delimiters(expr: str) -> bool:
+    if expr.startswith(r"\[") and expr.endswith(r"\]"):
+        return True
+    if expr.startswith(r"\(") and expr.endswith(r"\)"):
+        return True
+    if expr.startswith("$$") and expr.endswith("$$"):
+        return True
+    if expr.startswith("$") and expr.endswith("$"):
+        return True
+    return False
 
 
 def remove_hazardous_latex(expr: str) -> str:

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-_VALID_STATUSES = {"success", "timeout", "compile_error", "internal_error"}
+_VALID_STATUSES = {"success", "timeout", "compile_error", "internal_error", "queued", "rejected"}
 _DEFAULT_RETENTION_DAYS = 90
 _DEFAULT_MAX_SIZE_BYTES = 512 * 1024 * 1024
 _DEFAULT_MAINTENANCE_INTERVAL_SECONDS = 60

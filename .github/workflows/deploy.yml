@@ -1,0 +1,284 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+concurrency:
+  group: build-and-publish-images-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  BOT_IMAGE: ghcr.io/sleepypandas/discord-latex-bot
+  BOT_BASE_IMAGE: ghcr.io/sleepypandas/discord-latex-bot-base
+  DASHBOARD_IMAGE: ghcr.io/sleepypandas/discord-latex-bot-dashboard
+  BOT_BASE_TAG: py312-texlive
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      bot_base: ${{ steps.filter.outputs.bot_base }}
+      bot: ${{ steps.filter.outputs.bot }}
+      dashboard: ${{ steps.filter.outputs.dashboard }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed build targets
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            bot_base:
+              - 'Dockerfile.bot-base'
+              - '.github/workflows/deploy.yml'
+            bot:
+              - 'Dockerfile'
+              - 'Dockerfile.bot-base'
+              - 'src/**'
+              - '.dockerignore'
+              - '.github/workflows/deploy.yml'
+            dashboard:
+              - 'monitoring/dashboard/**'
+              - '.dockerignore'
+              - '.github/workflows/deploy.yml'
+
+  build-and-push-bot-base-image:
+    needs: detect-changes
+    if: github.event_name != 'pull_request' && needs.detect-changes.outputs.bot_base == 'true'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push bot base image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.bot-base
+          platforms: linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ env.BOT_BASE_IMAGE }}:${{ env.BOT_BASE_TAG }}
+          cache-from: |
+            type=gha,scope=bot-base
+            type=registry,ref=${{ env.BOT_BASE_IMAGE }}:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=bot-base
+            type=registry,ref=${{ env.BOT_BASE_IMAGE }}:buildcache,mode=max
+
+      - name: Clean up old bot base images
+        uses: actions/delete-package-versions@v5
+        continue-on-error: true
+        with:
+          package-name: 'discord-latex-bot-base'
+          package-type: 'container'
+          min-versions-to-keep: 3
+          delete-only-untagged-versions: 'true'
+
+  build-bot-image-pr:
+    needs: detect-changes
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.bot == 'true'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build bot base image for PR validation
+        if: needs.detect-changes.outputs.bot_base == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.bot-base
+          load: true
+          tags: sleepypandas/discord-latex-bot-base:pr-validation
+          platforms: linux/arm64
+          push: false
+
+      - name: Build bot image for PR validation
+        uses: docker/build-push-action@v5
+        env:
+          PR_BOT_BASE_IMAGE: ${{ needs.detect-changes.outputs.bot_base == 'true' && 'sleepypandas/discord-latex-bot-base:pr-validation' || format('{0}:{1}', env.BOT_BASE_IMAGE, env.BOT_BASE_TAG) }}
+        with:
+          context: .
+          file: Dockerfile
+          build-args: |
+            BOT_BASE_IMAGE=${{ env.PR_BOT_BASE_IMAGE }}
+          platforms: linux/arm64
+          push: false
+
+  build-and-push-bot-image:
+    needs:
+      - detect-changes
+      - build-and-push-bot-base-image
+    if: >
+      always() &&
+      github.event_name != 'pull_request' &&
+      needs.detect-changes.outputs.bot == 'true' &&
+      (
+        needs.build-and-push-bot-base-image.result == 'success' ||
+        needs.build-and-push-bot-base-image.result == 'skipped'
+      )
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push bot image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          build-args: |
+            BOT_BASE_IMAGE=${{ env.BOT_BASE_IMAGE }}:${{ env.BOT_BASE_TAG }}
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.BOT_IMAGE }}:latest
+          cache-from: |
+            type=gha,scope=bot
+            type=registry,ref=${{ env.BOT_IMAGE }}:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=bot
+            type=registry,ref=${{ env.BOT_IMAGE }}:buildcache,mode=max
+
+      - name: Clean up old bot images
+        uses: actions/delete-package-versions@v5
+        continue-on-error: true
+        with:
+          package-name: 'discord-latex-bot'
+          package-type: 'container'
+          min-versions-to-keep: 3
+          delete-only-untagged-versions: 'true'
+
+  build-dashboard-image-pr:
+    needs: detect-changes
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.dashboard == 'true'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build dashboard image for PR validation
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: monitoring/dashboard/Dockerfile
+          platforms: linux/arm64
+          push: false
+          cache-from: |
+            type=gha,scope=dashboard
+            type=registry,ref=${{ env.DASHBOARD_IMAGE }}:buildcache
+          cache-to: type=gha,mode=max,scope=dashboard
+
+  build-and-push-dashboard-image:
+    needs: detect-changes
+    if: github.event_name != 'pull_request' && needs.detect-changes.outputs.dashboard == 'true'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push dashboard image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: monitoring/dashboard/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.DASHBOARD_IMAGE }}:latest
+          cache-from: |
+            type=gha,scope=dashboard
+            type=registry,ref=${{ env.DASHBOARD_IMAGE }}:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=dashboard
+            type=registry,ref=${{ env.DASHBOARD_IMAGE }}:buildcache,mode=max
+
+      - name: Clean up old dashboard images
+        uses: actions/delete-package-versions@v5
+        continue-on-error: true
+        with:
+          package-name: 'discord-latex-bot-dashboard'
+          package-type: 'container'
+          min-versions-to-keep: 3
+          delete-only-untagged-versions: 'true'
