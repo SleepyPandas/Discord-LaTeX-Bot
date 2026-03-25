@@ -207,6 +207,28 @@ h1 {
   color: var(--muted);
   font-size: 12px;
   letter-spacing: 0.02em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.label-meta {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.label-split {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.label-split .label-meta {
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .window-pill {
@@ -228,12 +250,6 @@ h1 {
 .runtime-value {
   font-size: clamp(15px, 1.9vw, 19px);
   line-height: 1.25;
-}
-
-.runtime-meta {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .latency-value {
@@ -472,6 +488,11 @@ code {
   }
   .stamp {
     text-align: left;
+  }
+  .label-split .label-meta {
+    margin-left: 0;
+    text-align: left;
+    white-space: normal;
   }
   .chart-wrap {
     height: 220px;
