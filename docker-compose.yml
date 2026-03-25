@@ -24,6 +24,10 @@ services:
     build:
       context: .
       dockerfile: monitoring/dashboard/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        GIT_SHA: ${GIT_SHA:-unknown}
     platform: linux/arm64
     environment:
       METRICS_DB_PATH: /data/metrics.db
@@ -31,6 +35,12 @@ services:
       DASHBOARD_PORT: 8081
       DASHBOARD_USERNAME: ${DASHBOARD_USERNAME:-admin}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-change-me}
+      APP_VERSION: ${APP_VERSION:-unknown}
+      BUILD_DATE: ${BUILD_DATE:-unknown}
+      GIT_SHA: ${GIT_SHA:-unknown}
+      DASHBOARD_GITHUB_REPO: ${DASHBOARD_GITHUB_REPO:-SleepyPandas/Discord-LaTeX-Bot}
+      DASHBOARD_GITHUB_BRANCH: ${DASHBOARD_GITHUB_BRANCH:-main}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     ports:
       - "8081:8081"
     volumes:

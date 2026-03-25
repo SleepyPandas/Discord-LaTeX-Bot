@@ -2,8 +2,10 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import csv
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "monitoring" / "dashboard"))
@@ -120,6 +122,74 @@ class DashboardApiTestCase(unittest.TestCase):
         self.assertEqual(sum(data["totals"]["successes"]), 0)
         self.assertEqual(sum(data["totals"]["errors"]), 0)
         self.assertEqual(data["by_source"], {})
+
+    def test_query_all_events_returns_descending_rows(self):
+        rows = [
+            (_iso_hours_ago(2), "slash", "success", 275, "1", None),
+            (_iso_hours_ago(1), "legacy", "compile_error", 300, "2", "bad latex"),
+        ]
+        self._insert_rows(rows)
+
+        events = dashboard_app._query_all_events(self.db_path)
+
+        self.assertEqual(len(events), 2)
+        self.assertGreater(events[0]["id"], events[1]["id"])
+        self.assertEqual(events[0]["source"], "legacy")
+        self.assertEqual(events[1]["source"], "slash")
+
+    def test_events_to_csv_writes_header_and_rows(self):
+        events = [
+            {
+                "id": 2,
+                "created_at": "2026-03-22T00:00:00+00:00",
+                "source": "legacy",
+                "status": "compile_error",
+                "dpi": 300,
+                "user_id": "123",
+                "error_message": "bad latex",
+            },
+            {
+                "id": 1,
+                "created_at": "2026-03-21T00:00:00+00:00",
+                "source": "slash",
+                "status": "success",
+                "dpi": 275,
+                "user_id": "456",
+                "error_message": None,
+            },
+        ]
+
+        payload = dashboard_app._events_to_csv(events)
+
+        reader = csv.reader(StringIO(payload))
+        rows = list(reader)
+        self.assertEqual(
+            rows[0],
+            ["id", "created_at", "source", "status", "dpi", "user_id", "error_message"],
+        )
+        self.assertEqual(rows[1][0], "2")
+        self.assertEqual(rows[1][2], "legacy")
+        self.assertEqual(rows[2][0], "1")
+        self.assertEqual(rows[2][3], "success")
+
+    def test_format_uptime_human_readable(self):
+        self.assertEqual(dashboard_app._format_uptime(45), "45s")
+        self.assertEqual(dashboard_app._format_uptime(125), "2m 5s")
+        self.assertEqual(dashboard_app._format_uptime(3725), "1h 2m 5s")
+
+    def test_determine_update_status(self):
+        self.assertEqual(dashboard_app._determine_update_status("unknown", "abc123"), "unknown")
+        self.assertEqual(dashboard_app._determine_update_status("", "abc123"), "unknown")
+        self.assertEqual(dashboard_app._determine_update_status("abc123", ""), "unknown")
+        self.assertEqual(dashboard_app._determine_update_status("abc123", "abc123ff"), "up_to_date")
+        self.assertEqual(dashboard_app._determine_update_status("abc123", "def456"), "update_available")
+
+    def test_increment_restart_count_persists_in_db(self):
+        first = dashboard_app._increment_restart_count(self.db_path, "2026-03-22T00:00:00+00:00")
+        second = dashboard_app._increment_restart_count(self.db_path, "2026-03-22T00:05:00+00:00")
+
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 2)
 
 
 if __name__ == "__main__":

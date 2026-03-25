@@ -95,6 +95,28 @@ body {
   box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.16);
 }
 
+.action-link {
+  border: 1px solid #3a3e47;
+  border-radius: 8px;
+  background: #252830;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 10px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.action-link:hover {
+  border-color: var(--accent);
+}
+
+.action-link:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.16);
+}
+
 .eyebrow {
   margin: 0 0 2px;
   font-size: 24px;
@@ -129,6 +151,10 @@ h1 {
   gap: 10px;
 }
 
+.runtime-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .metric {
   padding: 14px;
   background: var(--panel-soft);
@@ -151,6 +177,11 @@ h1 {
   margin: 8px 0 0;
   font-size: clamp(24px, 3vw, 30px);
   font-weight: 600;
+}
+
+.runtime-value {
+  font-size: clamp(15px, 1.9vw, 19px);
+  line-height: 1.25;
 }
 
 .grid {
@@ -320,6 +351,9 @@ code {
   .cards-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .runtime-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .grid {
     grid-template-columns: 1fr;
   }
@@ -330,6 +364,9 @@ code {
 
 @media (max-width: 620px) {
   .cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .runtime-grid {
     grid-template-columns: 1fr;
   }
   .shell {
@@ -344,6 +381,9 @@ code {
   }
   .range-select {
     min-width: 140px;
+  }
+  .action-link {
+    text-align: center;
   }
   .panel-head {
     flex-direction: column;
