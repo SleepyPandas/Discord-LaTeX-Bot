@@ -27,7 +27,7 @@ class CompileQueue:
                     color=Color.red(),
                 )
                 await notify_coro(embed=embed, ephemeral=True)
-            return "REJECTED"
+            return "REJECTED", None
 
         self._waiting += 1
         position = self._waiting
@@ -56,10 +56,13 @@ class CompileQueue:
                 pass
 
         try:
-            return await asyncio.wait_for(
+            compile_started = time.monotonic()
+            result = await asyncio.wait_for(
                 loop.run_in_executor(executor, func, *args),
                 timeout=timeout,
             )
+            duration_ms = int((time.monotonic() - compile_started) * 1000)
+            return result, duration_ms
         finally:
             self._semaphore.release()
 
@@ -90,6 +93,7 @@ def _safe_record_latex_event(
     dpi: int | None,
     user_id: int | None,
     error_message: str | None = None,
+    duration_ms: int | None = None,
 ) -> None:
     try:
         record_latex_event(
@@ -99,6 +103,7 @@ def _safe_record_latex_event(
             dpi=dpi,
             user_id=user_id,
             error_message=error_message,
+            duration_ms=duration_ms,
         )
     except Exception:
         logger.exception(
@@ -332,7 +337,7 @@ async def handle_latex_compilation(
         return await interaction.followup.send(embed=embed, ephemeral=ephemeral, wait=True)
 
     try:
-        output = await compile_queue.execute(
+        output, duration_ms = await compile_queue.execute(
             loop, text_to_latex, latex_code, unique_id, dpi,
             notify_coro=notify_slash, timeout=15.0, user_id=interaction.user.id, source=source, dpi=dpi
         )
@@ -394,6 +399,7 @@ async def handle_latex_compilation(
             status="success",
             dpi=dpi,
             user_id=interaction.user.id,
+            duration_ms=duration_ms,
         )
         file = discord.File(f"{unique_id}.png", filename=f"{unique_id}.png")
         embed = discord.Embed(color=Color.blue())
@@ -419,6 +425,7 @@ async def handle_latex_compilation(
             dpi=dpi,
             user_id=interaction.user.id,
             error_message=str(output),
+            duration_ms=duration_ms,
         )
         embed = discord.Embed(
             title="Compilation Error",
@@ -611,7 +618,7 @@ async def on_message(message):
 
         # Set a timeout of 15 seconds
         try:
-            output = await compile_queue.execute(
+            output, duration_ms = await compile_queue.execute(
                 loop, text_to_latex, latex_code, unique_id, 275,
                 notify_coro=notify_legacy, timeout=15.0, user_id=message.author.id, source="legacy", dpi=275
             )
@@ -672,6 +679,7 @@ async def on_message(message):
                 status="success",
                 dpi=275,
                 user_id=message.author.id,
+                duration_ms=duration_ms,
             )
             file = discord.File(f"{unique_id}.png", filename=f"{unique_id}.png")
             embed = discord.Embed(color=Color.blue())
@@ -698,6 +706,7 @@ async def on_message(message):
                 dpi=275,
                 user_id=message.author.id,
                 error_message=str(output),
+                duration_ms=duration_ms,
             )
             embed = discord.Embed(
                 title="Compilation Error",

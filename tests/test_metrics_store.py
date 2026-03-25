@@ -123,13 +123,21 @@ class MetricsStoreTestCase(unittest.TestCase):
             dpi=275,
             user_id=1001,
             error_message=None,
+            duration_ms=1234,
         )
 
         with sqlite3.connect(self.db_path) as conn:
             count = conn.execute("SELECT COUNT(*) FROM latex_events;").fetchone()[0]
+            duration = conn.execute("SELECT duration_ms FROM latex_events LIMIT 1;").fetchone()[0]
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(latex_events);").fetchall()
+            }
 
         self.assertTrue(Path(self.db_path).exists())
         self.assertEqual(count, 1)
+        self.assertEqual(duration, 1234)
+        self.assertIn("duration_ms", columns)
 
 
 if __name__ == "__main__":
