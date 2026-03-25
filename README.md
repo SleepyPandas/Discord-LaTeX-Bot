@@ -39,7 +39,8 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 
 #### See Sample Data Dashboard Below
 
-<img height="700" alt="image" src="https://github.com/user-attachments/assets/05495370-bfc3-42c6-ba9f-747776bc0465" />
+<img height="850" alt="image" src="https://github.com/user-attachments/assets/ae343057-614d-4b9c-80aa-075c891fd709" />
+
 
 
 
