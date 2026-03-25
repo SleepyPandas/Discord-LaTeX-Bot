@@ -5,6 +5,7 @@ import io
 import logging
 import os
 import sqlite3
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from aiohttp import ClientSession, ClientTimeout, web
 
 
 BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parents[1]
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 ERROR_STATUSES = ("timeout", "compile_error", "internal_error", "rejected")
@@ -39,16 +41,53 @@ def get_dashboard_password() -> str:
     return os.getenv("DASHBOARD_PASSWORD", "change-me")
 
 
+def _run_git_command(*args: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(REPO_ROOT), *args],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=2,
+        ).strip()
+    except (subprocess.SubprocessError, OSError):
+        return ""
+
+
+def _git_fallback_version() -> str:
+    return _run_git_command("describe", "--tags", "--always", "--dirty")
+
+
+def _git_fallback_build_date() -> str:
+    return _run_git_command("show", "-s", "--format=%cI", "HEAD")
+
+
+def _git_fallback_sha() -> str:
+    return _run_git_command("rev-parse", "--short", "HEAD")
+
+
+def _git_fallback_branch_sha(branch: str) -> str:
+    return _run_git_command("rev-parse", f"origin/{branch}")
+
+
 def get_app_version() -> str:
-    return os.getenv("APP_VERSION") or os.getenv("IMAGE_VERSION", "unknown")
+    env_value = (os.getenv("APP_VERSION") or os.getenv("IMAGE_VERSION") or "").strip()
+    if env_value:
+        return env_value
+    return _git_fallback_version() or "unknown"
 
 
 def get_build_date() -> str:
-    return os.getenv("BUILD_DATE", "unknown")
+    env_value = (os.getenv("BUILD_DATE") or "").strip()
+    if env_value:
+        return env_value
+    return _git_fallback_build_date() or "unknown"
 
 
 def get_git_sha() -> str:
-    return os.getenv("GIT_SHA", "unknown")
+    env_value = (os.getenv("GIT_SHA") or "").strip()
+    if env_value:
+        return env_value
+    return _git_fallback_sha() or "unknown"
 
 
 def get_dashboard_github_repo() -> str:
@@ -183,6 +222,13 @@ async def _runtime_update_status(app: web.Application) -> dict:
     except Exception as exc:
         error = str(exc)
         LOGGER.warning("Failed to fetch GitHub main SHA: %s", error)
+
+    if not main_sha:
+        local_sha = _git_fallback_branch_sha(branch)
+        if local_sha:
+            main_sha = local_sha
+            if error:
+                error = f"{error}; using local origin/{branch}"
 
     payload = {
         "github_repo": repo,
