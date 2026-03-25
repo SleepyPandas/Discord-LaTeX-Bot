@@ -181,10 +181,6 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.cards-grid.runtime-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .latency-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

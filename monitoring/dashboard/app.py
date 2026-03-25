@@ -9,11 +9,12 @@ import sqlite3
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, web
 
 try:
-    import psutil
+    import psutil  # type: ignore[import-not-found]
 except ImportError:
     psutil = None
 
@@ -141,10 +142,14 @@ def _read_thermal_zone_temp(path: str = "/sys/class/thermal/thermal_zone0/temp")
 
 
 def _safe_load_average() -> dict[str, float | None]:
-    if not hasattr(os, "getloadavg"):
+    getloadavg = getattr(os, "getloadavg", None)
+    if not callable(getloadavg):
         return {"load_1m": None, "load_5m": None, "load_15m": None}
     try:
-        load_1m, load_5m, load_15m = os.getloadavg()
+        values = getloadavg()
+        if not isinstance(values, tuple) or len(values) != 3:
+            return {"load_1m": None, "load_5m": None, "load_15m": None}
+        load_1m, load_5m, load_15m = values
         return {
             "load_1m": round(float(load_1m), 2),
             "load_5m": round(float(load_5m), 2),
@@ -155,7 +160,7 @@ def _safe_load_average() -> dict[str, float | None]:
 
 
 def _collect_runtime_telemetry() -> dict:
-    telemetry = {
+    telemetry: dict[str, float | int | None] = {
         "cpu_percent": None,
         "load_1m": None,
         "load_5m": None,
@@ -189,7 +194,9 @@ def _collect_runtime_telemetry() -> dict:
 
     core_temp = None
     try:
-        sensors = psutil.sensors_temperatures() or {}
+        sensors_temperatures = getattr(psutil, "sensors_temperatures", None)
+        raw_sensors = sensors_temperatures() if callable(sensors_temperatures) else {}
+        sensors: dict[str, Any] = raw_sensors if isinstance(raw_sensors, dict) else {}
         for entries in sensors.values():
             for entry in entries:
                 current = getattr(entry, "current", None)
