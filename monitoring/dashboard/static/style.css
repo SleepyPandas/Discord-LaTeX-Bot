@@ -151,6 +151,32 @@ h1 {
   gap: 10px;
 }
 
+.metrics-board {
+  display: grid;
+  gap: 12px;
+}
+
+.metric-group {
+  padding: 12px;
+  background: var(--panel);
+}
+
+.metric-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.metric-group-head h2 {
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #b1bac4;
+  font-weight: 600;
+}
+
 .runtime-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -199,6 +225,10 @@ h1 {
   font-weight: 600;
 }
 
+.metrics-board .value {
+  font-size: clamp(20px, 2.4vw, 30px);
+}
+
 .runtime-value {
   font-size: clamp(15px, 1.9vw, 19px);
   line-height: 1.25;
@@ -216,6 +246,11 @@ h1 {
 
 .telemetry-value {
   font-size: clamp(17px, 2vw, 22px);
+}
+
+.telemetry-grid .telemetry-value,
+.latency-grid .latency-value {
+  letter-spacing: 0.01em;
 }
 
 .grid {
@@ -396,6 +431,10 @@ code {
   }
   .grid {
     grid-template-columns: 1fr;
+  }
+  .metric-group-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .chart-wrap {
     height: 250px;
