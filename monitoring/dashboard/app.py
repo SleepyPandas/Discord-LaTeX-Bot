@@ -3,6 +3,7 @@ import csv
 import hmac
 import io
 import logging
+import math
 import os
 import sqlite3
 import subprocess
@@ -10,6 +11,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from aiohttp import ClientSession, ClientTimeout, web
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -114,6 +120,92 @@ def _format_uptime(seconds: int) -> str:
     if minutes > 0:
         return f"{minutes}m {secs}s"
     return f"{secs}s"
+
+
+def _read_thermal_zone_temp(path: str = "/sys/class/thermal/thermal_zone0/temp") -> float | None:
+    try:
+        raw = Path(path).read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        return None
+
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+
+    if value > 1000:
+        value = value / 1000.0
+    if value <= 0 or value >= 150:
+        return None
+    return round(value, 1)
+
+
+def _safe_load_average() -> dict[str, float | None]:
+    if not hasattr(os, "getloadavg"):
+        return {"load_1m": None, "load_5m": None, "load_15m": None}
+    try:
+        load_1m, load_5m, load_15m = os.getloadavg()
+        return {
+            "load_1m": round(float(load_1m), 2),
+            "load_5m": round(float(load_5m), 2),
+            "load_15m": round(float(load_15m), 2),
+        }
+    except OSError:
+        return {"load_1m": None, "load_5m": None, "load_15m": None}
+
+
+def _collect_runtime_telemetry() -> dict:
+    telemetry = {
+        "cpu_percent": None,
+        "load_1m": None,
+        "load_5m": None,
+        "load_15m": None,
+        "ram_percent": None,
+        "ram_used_mb": None,
+        "ram_total_mb": None,
+        "core_temp_c": None,
+    }
+
+    telemetry.update(_safe_load_average())
+
+    if psutil is None:
+        telemetry["core_temp_c"] = _read_thermal_zone_temp()
+        return telemetry
+
+    try:
+        cpu_percent = float(psutil.cpu_percent(interval=None))
+        if math.isfinite(cpu_percent):
+            telemetry["cpu_percent"] = round(max(0.0, cpu_percent), 1)
+    except (psutil.Error, ValueError, TypeError):
+        pass
+
+    try:
+        vm = psutil.virtual_memory()
+        telemetry["ram_percent"] = round(float(vm.percent), 1)
+        telemetry["ram_used_mb"] = int(vm.used / (1024 * 1024))
+        telemetry["ram_total_mb"] = int(vm.total / (1024 * 1024))
+    except (psutil.Error, ValueError, TypeError, AttributeError):
+        pass
+
+    core_temp = None
+    try:
+        sensors = psutil.sensors_temperatures() or {}
+        for entries in sensors.values():
+            for entry in entries:
+                current = getattr(entry, "current", None)
+                if current is None:
+                    continue
+                current_temp = float(current)
+                if current_temp > 0:
+                    core_temp = round(current_temp, 1)
+                    break
+            if core_temp is not None:
+                break
+    except (psutil.Error, ValueError, TypeError, AttributeError):
+        core_temp = None
+
+    telemetry["core_temp_c"] = core_temp if core_temp is not None else _read_thermal_zone_temp()
+    return telemetry
 
 
 def _determine_update_status(running_sha: str, main_sha: str) -> str:
@@ -744,6 +836,7 @@ async def api_runtime(request: web.Request) -> web.Response:
     started_at = request.app["runtime_started_at"]
     uptime_seconds = int((now - started_at).total_seconds())
     release_data = await _runtime_release_version(request.app)
+    telemetry = _collect_runtime_telemetry()
 
     return web.json_response(
         {
@@ -755,6 +848,7 @@ async def api_runtime(request: web.Request) -> web.Response:
             "image_pulled_at": release_data.get("image_pulled_at", ""),
             "release_checked_at": release_data.get("checked_at", ""),
             "release_error": release_data.get("error", ""),
+            "telemetry": telemetry,
             "generated_at": now.isoformat(timespec="seconds"),
         }
     )
@@ -775,6 +869,11 @@ def create_app() -> web.Application:
         started_at.isoformat(timespec="seconds"),
     )
     app["runtime_release_cache"] = {"checked_at": None, "payload": None}
+    if psutil is not None:
+        try:
+            psutil.cpu_percent(interval=None)
+        except psutil.Error:
+            LOGGER.debug("Failed to prime psutil cpu_percent")
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
     app.router.add_get("/api/summary", api_summary)

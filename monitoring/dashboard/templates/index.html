@@ -75,6 +75,26 @@
       </article>
     </section>
 
+    <section class="cards-grid telemetry-grid">
+      <article class="metric card">
+        <p class="label">CPU Usage</p>
+        <p class="value telemetry-value" id="telemetry-cpu">n/a</p>
+      </article>
+      <article class="metric card">
+        <p class="label">Load Average (1m / 5m / 15m)</p>
+        <p class="value telemetry-value" id="telemetry-load">n/a</p>
+      </article>
+      <article class="metric card">
+        <p class="label">RAM Usage</p>
+        <p class="value telemetry-value" id="telemetry-ram">n/a</p>
+        <p class="runtime-meta" id="telemetry-ram-meta">Used: n/a</p>
+      </article>
+      <article class="metric card" id="telemetry-temp-card">
+        <p class="label">Core Temp</p>
+        <p class="value telemetry-value" id="telemetry-temp">n/a</p>
+      </article>
+    </section>
+
     <section class="grid">
       <article class="card panel">
         <div class="panel-head">
@@ -177,6 +197,12 @@
     const latencyP95El = document.getElementById("latency-p95");
     const latencyP99El = document.getElementById("latency-p99");
     const latencySamplesEl = document.getElementById("latency-samples");
+    const telemetryCpuEl = document.getElementById("telemetry-cpu");
+    const telemetryLoadEl = document.getElementById("telemetry-load");
+    const telemetryRamEl = document.getElementById("telemetry-ram");
+    const telemetryRamMetaEl = document.getElementById("telemetry-ram-meta");
+    const telemetryTempEl = document.getElementById("telemetry-temp");
+    const telemetryTempCardEl = document.getElementById("telemetry-temp-card");
     const eventsBodyEl = document.getElementById("events-body");
     const overviewCanvas = document.getElementById("overview-chart");
     const errorsCanvas = document.getElementById("errors-chart");
@@ -350,6 +376,44 @@
       const parsed = Number(value);
       if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
       return `${Math.round(parsed)} ms`;
+    }
+
+    function formatPercent(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
+      return `${parsed.toFixed(1)}%`;
+    }
+
+    function formatLoad(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
+      return parsed.toFixed(2);
+    }
+
+    function formatMb(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
+      return `${Math.round(parsed)} MB`;
+    }
+
+    function applyTelemetry(telemetry) {
+      const data = telemetry || {};
+      telemetryCpuEl.textContent = formatPercent(data.cpu_percent);
+      telemetryLoadEl.textContent = `${formatLoad(data.load_1m)} / ${formatLoad(data.load_5m)} / ${formatLoad(data.load_15m)}`;
+      telemetryRamEl.textContent = formatPercent(data.ram_percent);
+
+      const used = formatMb(data.ram_used_mb);
+      const total = formatMb(data.ram_total_mb);
+      telemetryRamMetaEl.textContent = `Used: ${used} / ${total}`;
+
+      const temp = Number(data.core_temp_c);
+      if (!Number.isFinite(temp) || temp <= 0) {
+        telemetryTempCardEl.style.display = "none";
+        telemetryTempEl.textContent = "n/a";
+      } else {
+        telemetryTempCardEl.style.display = "";
+        telemetryTempEl.textContent = `${temp.toFixed(1)} C`;
+      }
     }
 
     function upsertLineChart(currentChart, canvasEl, labels, datasets) {
@@ -551,6 +615,7 @@
       runtimeRestartsEl.textContent = asNumber(data.restart_count);
       runtimeVersionEl.textContent = text(data.app_version);
       runtimeVersionMetaEl.textContent = formatPulledDate(data.image_pulled_at);
+      applyTelemetry(data.telemetry);
     }
 
     function markRuntimeUnavailable() {
@@ -558,6 +623,7 @@
       runtimeRestartsEl.textContent = "n/a";
       runtimeVersionEl.textContent = "n/a";
       runtimeVersionMetaEl.textContent = "Pull date unavailable";
+      applyTelemetry(null);
     }
 
     async function refresh() {

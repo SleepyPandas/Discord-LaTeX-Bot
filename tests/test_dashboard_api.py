@@ -6,6 +6,7 @@ from io import StringIO
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import csv
+from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "monitoring" / "dashboard"))
@@ -209,6 +210,25 @@ class DashboardApiTestCase(unittest.TestCase):
 
         self.assertEqual(first, 1)
         self.assertEqual(second, 2)
+
+    def test_read_thermal_zone_temp_handles_milli_celsius(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            temp_path = Path(temp_dir) / "thermal_temp"
+            temp_path.write_text("55000", encoding="utf-8")
+            value = dashboard_app._read_thermal_zone_temp(str(temp_path))
+            self.assertEqual(value, 55.0)
+
+    def test_collect_runtime_telemetry_without_psutil_uses_fallbacks(self):
+        with patch.object(dashboard_app, "psutil", None), patch.object(
+            dashboard_app,
+            "_read_thermal_zone_temp",
+            return_value=47.2,
+        ):
+            telemetry = dashboard_app._collect_runtime_telemetry()
+
+        self.assertIn("cpu_percent", telemetry)
+        self.assertIn("ram_percent", telemetry)
+        self.assertEqual(telemetry["core_temp_c"], 47.2)
 
 
 if __name__ == "__main__":
