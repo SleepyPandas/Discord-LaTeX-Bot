@@ -59,6 +59,22 @@
       </article>
     </section>
 
+    <section class="cards-grid latency-grid">
+      <article class="metric card">
+        <p class="label">Latency p50</p>
+        <p class="value latency-value" id="latency-p50">n/a</p>
+      </article>
+      <article class="metric card">
+        <p class="label">Latency p95</p>
+        <p class="value latency-value" id="latency-p95">n/a</p>
+      </article>
+      <article class="metric card">
+        <p class="label">Latency p99</p>
+        <p class="value latency-value" id="latency-p99">n/a</p>
+        <p class="runtime-meta" id="latency-samples">Samples: 0</p>
+      </article>
+    </section>
+
     <section class="grid">
       <article class="card panel">
         <div class="panel-head">
@@ -157,6 +173,10 @@
     const runtimeRestartsEl = document.getElementById("runtime-restarts");
     const runtimeVersionEl = document.getElementById("runtime-version");
     const runtimeVersionMetaEl = document.getElementById("runtime-version-meta");
+    const latencyP50El = document.getElementById("latency-p50");
+    const latencyP95El = document.getElementById("latency-p95");
+    const latencyP99El = document.getElementById("latency-p99");
+    const latencySamplesEl = document.getElementById("latency-samples");
     const eventsBodyEl = document.getElementById("events-body");
     const overviewCanvas = document.getElementById("overview-chart");
     const errorsCanvas = document.getElementById("errors-chart");
@@ -324,6 +344,12 @@
         hour: "2-digit",
         minute: "2-digit",
       })}`;
+    }
+
+    function formatLatency(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
+      return `${Math.round(parsed)} ms`;
     }
 
     function upsertLineChart(currentChart, canvasEl, labels, datasets) {
@@ -507,6 +533,11 @@
       setWindowPills(windowKey);
       rangeSelectEl.value = windowKey;
       renderSources(data.by_source, windowKey);
+      const latency = data.latency_ms || {};
+      latencyP50El.textContent = formatLatency(latency.p50);
+      latencyP95El.textContent = formatLatency(latency.p95);
+      latencyP99El.textContent = formatLatency(latency.p99);
+      latencySamplesEl.textContent = `Samples: ${asNumber(latency.samples)}`;
     }
 
     function applyTimeseries(data) {

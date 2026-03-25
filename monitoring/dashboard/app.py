@@ -326,6 +326,24 @@ def _fetch_one_int(conn: sqlite3.Connection, query: str, params: tuple) -> int:
     return int(value or 0)
 
 
+def _percentile(values: list[int], percentile: float) -> int | None:
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+
+    sorted_values = sorted(values)
+    rank = (len(sorted_values) - 1) * (percentile / 100.0)
+    lower = int(rank)
+    upper = min(lower + 1, len(sorted_values) - 1)
+    if lower == upper:
+        return sorted_values[lower]
+
+    weight = rank - lower
+    interpolated = sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * weight
+    return int(round(interpolated))
+
+
 def _query_summary(db_path: str, window_key: str) -> dict:
     window_hours = WINDOW_HOURS_BY_KEY[window_key]
     threshold = _window_start_iso(window_hours)
@@ -340,6 +358,12 @@ def _query_summary(db_path: str, window_key: str) -> dict:
         "errors": 0,
         "queued": 0,
         "error_rate_percent": 0.0,
+        "latency_ms": {
+            "p50": None,
+            "p95": None,
+            "p99": None,
+            "samples": 0,
+        },
         "by_source": {},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
@@ -372,6 +396,30 @@ def _query_summary(db_path: str, window_key: str) -> dict:
                 """,
                 (threshold, *ERROR_STATUSES),
             )
+
+            table_columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(latex_events);").fetchall()
+            }
+            if "duration_ms" in table_columns:
+                duration_rows = conn.execute(
+                    """
+                    SELECT duration_ms
+                    FROM latex_events
+                    WHERE created_at >= ?
+                      AND status != 'queued'
+                      AND duration_ms IS NOT NULL
+                      AND duration_ms >= 0;
+                    """,
+                    (threshold,),
+                ).fetchall()
+                durations = [int(row[0]) for row in duration_rows if row[0] is not None]
+                response["latency_ms"] = {
+                    "p50": _percentile(durations, 50),
+                    "p95": _percentile(durations, 95),
+                    "p99": _percentile(durations, 99),
+                    "samples": len(durations),
+                }
 
             by_source: dict[str, dict[str, int]] = {}
             rows = conn.execute(

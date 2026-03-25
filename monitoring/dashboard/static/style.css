@@ -159,6 +159,10 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.latency-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .runtime-grid .metric {
   min-width: 0;
 }
@@ -200,6 +204,10 @@ h1 {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 12px;
+}
+
+.latency-value {
+  font-size: clamp(18px, 2.2vw, 24px);
 }
 
 .grid {
@@ -372,6 +380,9 @@ code {
   .runtime-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .latency-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .grid {
     grid-template-columns: 1fr;
   }
@@ -385,6 +396,9 @@ code {
     grid-template-columns: 1fr;
   }
   .runtime-grid {
+    grid-template-columns: 1fr;
+  }
+  .latency-grid {
     grid-template-columns: 1fr;
   }
   .shell {
