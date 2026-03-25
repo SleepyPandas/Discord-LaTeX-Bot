@@ -150,10 +150,17 @@ def init_metrics_db(db_path: str) -> None:
                 status TEXT NOT NULL,
                 dpi INTEGER,
                 user_id TEXT,
-                error_message TEXT
+                error_message TEXT,
+                duration_ms INTEGER
             );
             """
         )
+        existing_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(latex_events);").fetchall()
+        }
+        if "duration_ms" not in existing_columns:
+            conn.execute("ALTER TABLE latex_events ADD COLUMN duration_ms INTEGER;")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_latex_events_created_at ON latex_events(created_at);"
         )
@@ -184,15 +191,20 @@ def record_latex_event(
     dpi: int | None,
     user_id: int | None,
     error_message: str | None = None,
+    duration_ms: int | None = None,
 ) -> None:
     if status not in _VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}'")
 
+    normalized_duration_ms: int | None = None
+    if duration_ms is not None:
+        normalized_duration_ms = max(0, int(duration_ms))
+
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message)
-            VALUES (?, ?, ?, ?, ?, ?);
+            INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 _utc_now_iso(),
@@ -201,6 +213,7 @@ def record_latex_event(
                 dpi,
                 str(user_id) if user_id is not None else None,
                 (error_message or "")[:500] or None,
+                normalized_duration_ms,
             ),
         )
         conn.commit()

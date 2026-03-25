@@ -6,6 +6,7 @@ from io import StringIO
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import csv
+from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "monitoring" / "dashboard"))
@@ -40,7 +41,8 @@ class DashboardApiTestCase(unittest.TestCase):
                     status TEXT NOT NULL,
                     dpi INTEGER,
                     user_id TEXT,
-                    error_message TEXT
+                    error_message TEXT,
+                    duration_ms INTEGER
                 );
                 """
             )
@@ -50,8 +52,8 @@ class DashboardApiTestCase(unittest.TestCase):
         with sqlite3.connect(self.db_path) as conn:
             conn.executemany(
                 """
-                INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message)
-                VALUES (?, ?, ?, ?, ?, ?);
+                INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?);
                 """,
                 rows,
             )
@@ -64,12 +66,12 @@ class DashboardApiTestCase(unittest.TestCase):
 
     def test_query_summary_counts_by_window(self):
         rows = [
-            (_iso_hours_ago(2), "slash", "success", 275, "1", None),
-            (_iso_hours_ago(3), "slash", "compile_error", 275, "1", "bad latex"),
-            (_iso_hours_ago(30), "legacy", "success", 275, "2", None),
-            (_iso_hours_ago(24 * 8), "legacy", "timeout", 275, "3", "timed out"),
-            (_iso_hours_ago(24 * 45), "slash", "internal_error", 275, "4", "boom"),
-            (_iso_hours_ago(24 * 95), "slash", "success", 275, "5", None),
+            (_iso_hours_ago(2), "slash", "success", 275, "1", None, 100),
+            (_iso_hours_ago(3), "slash", "compile_error", 275, "1", "bad latex", 150),
+            (_iso_hours_ago(30), "legacy", "success", 275, "2", None, 200),
+            (_iso_hours_ago(24 * 8), "legacy", "timeout", 275, "3", "timed out", 300),
+            (_iso_hours_ago(24 * 45), "slash", "internal_error", 275, "4", "boom", 400),
+            (_iso_hours_ago(24 * 95), "slash", "success", 275, "5", None, 500),
         ]
         self._insert_rows(rows)
 
@@ -88,12 +90,30 @@ class DashboardApiTestCase(unittest.TestCase):
                 self.assertEqual(summary["successes"], counts[1])
                 self.assertEqual(summary["errors"], counts[2])
 
+    def test_query_summary_includes_latency_percentiles(self):
+        rows = [
+            (_iso_hours_ago(1), "slash", "success", 275, "1", None, 100),
+            (_iso_hours_ago(2), "slash", "success", 275, "2", None, 200),
+            (_iso_hours_ago(3), "slash", "compile_error", 275, "3", "bad latex", 300),
+            (_iso_hours_ago(4), "slash", "success", 275, "4", None, 400),
+            (_iso_hours_ago(5), "slash", "timeout", 275, "5", "timed out", 500),
+        ]
+        self._insert_rows(rows)
+
+        summary = dashboard_app._query_summary(self.db_path, "24h")
+        latency = summary.get("latency_ms", {})
+
+        self.assertEqual(latency.get("samples"), 5)
+        self.assertEqual(latency.get("p50"), 300)
+        self.assertEqual(latency.get("p95"), 480)
+        self.assertEqual(latency.get("p99"), 496)
+
     def test_timeseries_returns_aligned_series_lengths(self):
         rows = [
-            (_iso_hours_ago(1), "slash", "success", 275, "1", None),
-            (_iso_hours_ago(2), "slash", "compile_error", 275, "2", "bad latex"),
-            (_iso_hours_ago(25), "legacy", "timeout", 275, "3", "timed out"),
-            (_iso_hours_ago(24 * 26), "legacy", "internal_error", 275, "4", "boom"),
+            (_iso_hours_ago(1), "slash", "success", 275, "1", None, 120),
+            (_iso_hours_ago(2), "slash", "compile_error", 275, "2", "bad latex", 260),
+            (_iso_hours_ago(25), "legacy", "timeout", 275, "3", "timed out", 340),
+            (_iso_hours_ago(24 * 26), "legacy", "internal_error", 275, "4", "boom", 480),
         ]
         self._insert_rows(rows)
 
@@ -125,8 +145,8 @@ class DashboardApiTestCase(unittest.TestCase):
 
     def test_query_all_events_returns_descending_rows(self):
         rows = [
-            (_iso_hours_ago(2), "slash", "success", 275, "1", None),
-            (_iso_hours_ago(1), "legacy", "compile_error", 300, "2", "bad latex"),
+            (_iso_hours_ago(2), "slash", "success", 275, "1", None, 180),
+            (_iso_hours_ago(1), "legacy", "compile_error", 300, "2", "bad latex", 290),
         ]
         self._insert_rows(rows)
 
@@ -190,6 +210,25 @@ class DashboardApiTestCase(unittest.TestCase):
 
         self.assertEqual(first, 1)
         self.assertEqual(second, 2)
+
+    def test_read_thermal_zone_temp_handles_milli_celsius(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            temp_path = Path(temp_dir) / "thermal_temp"
+            temp_path.write_text("55000", encoding="utf-8")
+            value = dashboard_app._read_thermal_zone_temp(str(temp_path))
+            self.assertEqual(value, 55.0)
+
+    def test_collect_runtime_telemetry_without_psutil_uses_fallbacks(self):
+        with patch.object(dashboard_app, "psutil", None), patch.object(
+            dashboard_app,
+            "_read_thermal_zone_temp",
+            return_value=47.2,
+        ):
+            telemetry = dashboard_app._collect_runtime_telemetry()
+
+        self.assertIn("cpu_percent", telemetry)
+        self.assertIn("ram_percent", telemetry)
+        self.assertEqual(telemetry["core_temp_c"], 47.2)
 
 
 if __name__ == "__main__":

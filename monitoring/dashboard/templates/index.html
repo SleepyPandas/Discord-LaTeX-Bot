@@ -24,46 +24,104 @@
       <p class="meta">Refresh interval: <code>30s</code></p>
     </section>
 
-    <section class="cards-grid">
-      <article class="metric card">
-        <p class="label">Attempts <span class="window-pill" data-window-label>(90d)</span></p>
-        <p class="value" id="attempts">0</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Successes <span class="window-pill" data-window-label>(90d)</span></p>
-        <p class="value" id="successes">0</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Errors <span class="window-pill" data-window-label>(90d)</span></p>
-        <p class="value" id="errors">0</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Error Rate <span class="window-pill" data-window-label>(90d)</span></p>
-        <p class="value" id="error-rate">0.00%</p>
-      </article>
-    </section>
+    <section class="metrics-board">
+      <section class="metric-group card">
+        <div class="metric-group-head">
+          <h2>Reliability</h2>
+          <span class="stamp">Window: <span data-window-label>(90d)</span></span>
+        </div>
+        <div class="cards-grid">
+          <article class="metric card">
+            <p class="label">Attempts <span class="window-pill" data-window-label>(90d)</span></p>
+            <p class="value" id="attempts">0</p>
+          </article>
+          <article class="metric card">
+            <p class="label">Successes <span class="window-pill" data-window-label>(90d)</span></p>
+            <p class="value" id="successes">0</p>
+          </article>
+          <article class="metric card">
+            <p class="label">Errors <span class="window-pill" data-window-label>(90d)</span></p>
+            <p class="value" id="errors">0</p>
+          </article>
+          <article class="metric card">
+            <p class="label">Error Rate <span class="window-pill" data-window-label>(90d)</span></p>
+            <p class="value" id="error-rate">0.00%</p>
+          </article>
+        </div>
+      </section>
 
-    <section class="cards-grid runtime-grid">
-      <article class="metric card">
-        <p class="label">Uptime</p>
-        <p class="value" id="runtime-uptime">n/a</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Restarts</p>
-        <p class="value" id="runtime-restarts">n/a</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Image Version</p>
-        <p class="value runtime-value" id="runtime-version">n/a</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Build Date</p>
-        <p class="value runtime-value" id="runtime-build-date">n/a</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Main Branch Status</p>
-        <p class="value runtime-value" id="runtime-update-status">n/a</p>
-      </article>
+      <section class="metric-group card">
+        <div class="metric-group-head">
+          <h2>Runtime</h2>
+          <span class="stamp">Service state</span>
+        </div>
+        <div class="cards-grid runtime-grid">
+          <article class="metric card">
+            <p class="label">Uptime</p>
+            <p class="value" id="runtime-uptime">n/a</p>
+          </article>
+          <article class="metric card">
+            <p class="label">Restarts</p>
+            <p class="value" id="runtime-restarts">n/a</p>
+          </article>
+          <article class="metric card">
+            <p class="label label-split">
+              <span class="label-title">Image Version</span>
+              <span class="label-meta" id="runtime-version-meta">Pulled unavailable</span>
+            </p>
+            <p class="value runtime-value" id="runtime-version">n/a</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="metric-group card">
+        <div class="metric-group-head">
+          <h2>Latency</h2>
+          <span class="stamp" id="latency-samples">Samples: 0</span>
+        </div>
+        <div class="cards-grid latency-grid">
+          <article class="metric card">
+            <p class="label">p50</p>
+            <p class="value latency-value" id="latency-p50">n/a</p>
+          </article>
+          <article class="metric card">
+            <p class="label">p95</p>
+            <p class="value latency-value" id="latency-p95">n/a</p>
+          </article>
+          <article class="metric card">
+            <p class="label">p99</p>
+            <p class="value latency-value" id="latency-p99">n/a</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="metric-group card">
+        <div class="metric-group-head">
+          <h2>System</h2>
+          <span class="stamp">Telemetry</span>
+        </div>
+        <div class="cards-grid telemetry-grid">
+          <article class="metric card">
+            <p class="label">CPU Usage</p>
+            <p class="value telemetry-value" id="telemetry-cpu">n/a</p>
+          </article>
+          <article class="metric card">
+            <p class="label">Load (1m / 5m / 15m)</p>
+            <p class="value telemetry-value" id="telemetry-load">n/a</p>
+          </article>
+          <article class="metric card">
+            <p class="label label-split">
+              <span class="label-title">RAM Usage</span>
+              <span class="label-meta" id="telemetry-ram-meta">Used: n/a</span>
+            </p>
+            <p class="value telemetry-value" id="telemetry-ram">n/a</p>
+          </article>
+          <article class="metric card" id="telemetry-temp-card">
+            <p class="label">Core Temp</p>
+            <p class="value telemetry-value" id="telemetry-temp">n/a</p>
+          </article>
+        </div>
+      </section>
     </section>
 
     <section class="grid">
@@ -163,8 +221,17 @@
     const runtimeUptimeEl = document.getElementById("runtime-uptime");
     const runtimeRestartsEl = document.getElementById("runtime-restarts");
     const runtimeVersionEl = document.getElementById("runtime-version");
-    const runtimeBuildDateEl = document.getElementById("runtime-build-date");
-    const runtimeUpdateStatusEl = document.getElementById("runtime-update-status");
+    const runtimeVersionMetaEl = document.getElementById("runtime-version-meta");
+    const latencyP50El = document.getElementById("latency-p50");
+    const latencyP95El = document.getElementById("latency-p95");
+    const latencyP99El = document.getElementById("latency-p99");
+    const latencySamplesEl = document.getElementById("latency-samples");
+    const telemetryCpuEl = document.getElementById("telemetry-cpu");
+    const telemetryLoadEl = document.getElementById("telemetry-load");
+    const telemetryRamEl = document.getElementById("telemetry-ram");
+    const telemetryRamMetaEl = document.getElementById("telemetry-ram-meta");
+    const telemetryTempEl = document.getElementById("telemetry-temp");
+    const telemetryTempCardEl = document.getElementById("telemetry-temp-card");
     const eventsBodyEl = document.getElementById("events-body");
     const overviewCanvas = document.getElementById("overview-chart");
     const errorsCanvas = document.getElementById("errors-chart");
@@ -321,6 +388,63 @@
       return `${year} ${month} ${day} - ${hour}:${minute}:${second}`;
     }
 
+    function formatPulledDate(value) {
+      if (!value) return "Pull date unavailable";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return "Pull date unavailable";
+      return `Pulled: ${parsed.toLocaleString([], {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+    }
+
+    function formatLatency(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
+      return `${Math.round(parsed)} ms`;
+    }
+
+    function formatPercent(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
+      return `${parsed.toFixed(1)}%`;
+    }
+
+    function formatLoad(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
+      return parsed.toFixed(2);
+    }
+
+    function formatMb(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) return "n/a";
+      return `${Math.round(parsed)} MB`;
+    }
+
+    function applyTelemetry(telemetry) {
+      const data = telemetry || {};
+      telemetryCpuEl.textContent = formatPercent(data.cpu_percent);
+      telemetryLoadEl.textContent = `${formatLoad(data.load_1m)} / ${formatLoad(data.load_5m)} / ${formatLoad(data.load_15m)}`;
+      telemetryRamEl.textContent = formatPercent(data.ram_percent);
+
+      const used = formatMb(data.ram_used_mb);
+      const total = formatMb(data.ram_total_mb);
+      telemetryRamMetaEl.textContent = `Used: ${used} / ${total}`;
+
+      const temp = Number(data.core_temp_c);
+      if (!Number.isFinite(temp) || temp <= 0) {
+        telemetryTempCardEl.style.display = "none";
+        telemetryTempEl.textContent = "n/a";
+      } else {
+        telemetryTempCardEl.style.display = "";
+        telemetryTempEl.textContent = `${temp.toFixed(1)} C`;
+      }
+    }
+
     function upsertLineChart(currentChart, canvasEl, labels, datasets) {
       if (!currentChart) {
         return new Chart(canvasEl, {
@@ -467,23 +591,6 @@
       `).join("");
     }
 
-    function shortSha(value) {
-      const raw = text(value);
-      if (raw === "n/a") return raw;
-      return raw.length > 12 ? raw.slice(0, 12) : raw;
-    }
-
-    function renderUpdateStatus(status, mainSha) {
-      const normalized = String(status || "").toLowerCase();
-      if (normalized === "up_to_date") {
-        return `Up to date (${escapeHtml(shortSha(mainSha))})`;
-      }
-      if (normalized === "update_available") {
-        return `Update available (${escapeHtml(shortSha(mainSha))})`;
-      }
-      return "Unknown";
-    }
-
     async function loadSummary(windowKey) {
       const resp = await fetch(`/api/summary?range=${encodeURIComponent(windowKey)}`, { cache: "no-store" });
       if (!resp.ok) throw new Error("summary request failed");
@@ -519,6 +626,11 @@
       setWindowPills(windowKey);
       rangeSelectEl.value = windowKey;
       renderSources(data.by_source, windowKey);
+      const latency = data.latency_ms || {};
+      latencyP50El.textContent = formatLatency(latency.p50);
+      latencyP95El.textContent = formatLatency(latency.p95);
+      latencyP99El.textContent = formatLatency(latency.p99);
+      latencySamplesEl.textContent = `Samples: ${asNumber(latency.samples)}`;
     }
 
     function applyTimeseries(data) {
@@ -530,17 +642,17 @@
     function applyRuntime(data) {
       runtimeUptimeEl.textContent = text(data.uptime_human);
       runtimeRestartsEl.textContent = asNumber(data.restart_count);
-      runtimeVersionEl.textContent = `${text(data.app_version)} (${escapeHtml(shortSha(data.git_sha))})`;
-      runtimeBuildDateEl.textContent = text(data.build_date);
-      runtimeUpdateStatusEl.textContent = renderUpdateStatus(data.update_status, data.main_sha);
+      runtimeVersionEl.textContent = text(data.app_version);
+      runtimeVersionMetaEl.textContent = formatPulledDate(data.image_pulled_at);
+      applyTelemetry(data.telemetry);
     }
 
     function markRuntimeUnavailable() {
       runtimeUptimeEl.textContent = "n/a";
       runtimeRestartsEl.textContent = "n/a";
       runtimeVersionEl.textContent = "n/a";
-      runtimeBuildDateEl.textContent = "n/a";
-      runtimeUpdateStatusEl.textContent = "Unknown";
+      runtimeVersionMetaEl.textContent = "Pull date unavailable";
+      applyTelemetry(null);
     }
 
     async function refresh() {

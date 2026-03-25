@@ -134,12 +134,9 @@ METRICS_MAINTENANCE_INTERVAL_SECONDS=60
 
 # Optional: dashboard runtime/version metadata
 APP_VERSION=unknown
-BUILD_DATE=unknown
-GIT_SHA=unknown
 
-# Optional: dashboard update checks against GitHub main branch
+# Optional: dashboard release checks against GitHub releases
 DASHBOARD_GITHUB_REPO=SleepyPandas/Discord-LaTeX-Bot
-DASHBOARD_GITHUB_BRANCH=main
 GITHUB_TOKEN=
 ```
 
@@ -209,7 +206,9 @@ python -m unittest tests.test_bot_modal_flow
 - The dashboard runs as a separate service in `monitoring/dashboard`.
 - It tracks LaTeX command attempts, successes, failures, and error rates across selectable ranges (`24h`, `7d`, `30d`, `90d`).
 - It includes line charts for request/success/error totals, error-status trends, and request counts by source.
-- It shows runtime status including uptime, restart count, running image version/build date, and whether your running SHA matches latest `main`.
+- It shows runtime status including uptime, restart count, and running image version from the latest GitHub release.
+- It includes latency percentile cards (`p50`, `p95`, `p99`) from measured compile durations.
+- It includes lightweight hardware telemetry cards (CPU %, load avg 1m/5m/15m, RAM %, and core temp when available).
 - Metrics are stored in `monitoring/data/metrics.db` (via docker volume mount).
 - Metrics retention defaults to 90 days and enforces a 512MB SQLite cap by pruning oldest rows when needed.
 - Access is local-network only unless you explicitly port-forward your router.

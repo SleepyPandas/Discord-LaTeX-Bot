@@ -3,15 +3,24 @@ import csv
 import hmac
 import io
 import logging
+import math
 import os
 import sqlite3
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, web
 
+try:
+    import psutil  # type: ignore[import-not-found]
+except ImportError:
+    psutil = None
+
 
 BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parents[1]
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 ERROR_STATUSES = ("timeout", "compile_error", "internal_error", "rejected")
@@ -39,16 +48,53 @@ def get_dashboard_password() -> str:
     return os.getenv("DASHBOARD_PASSWORD", "change-me")
 
 
+def _run_git_command(*args: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(REPO_ROOT), *args],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=2,
+        ).strip()
+    except (subprocess.SubprocessError, OSError):
+        return ""
+
+
+def _git_fallback_version() -> str:
+    return _run_git_command("describe", "--tags", "--always", "--dirty")
+
+
+def _git_fallback_build_date() -> str:
+    return _run_git_command("show", "-s", "--format=%cI", "HEAD")
+
+
+def _git_fallback_sha() -> str:
+    return _run_git_command("rev-parse", "--short", "HEAD")
+
+
+def _git_fallback_branch_sha(branch: str) -> str:
+    return _run_git_command("rev-parse", f"origin/{branch}")
+
+
 def get_app_version() -> str:
-    return os.getenv("APP_VERSION") or os.getenv("IMAGE_VERSION", "unknown")
+    env_value = (os.getenv("APP_VERSION") or os.getenv("IMAGE_VERSION") or "").strip()
+    if env_value:
+        return env_value
+    return _git_fallback_version() or "unknown"
 
 
 def get_build_date() -> str:
-    return os.getenv("BUILD_DATE", "unknown")
+    env_value = (os.getenv("BUILD_DATE") or "").strip()
+    if env_value:
+        return env_value
+    return _git_fallback_build_date() or "unknown"
 
 
 def get_git_sha() -> str:
-    return os.getenv("GIT_SHA", "unknown")
+    env_value = (os.getenv("GIT_SHA") or "").strip()
+    if env_value:
+        return env_value
+    return _git_fallback_sha() or "unknown"
 
 
 def get_dashboard_github_repo() -> str:
@@ -75,6 +121,98 @@ def _format_uptime(seconds: int) -> str:
     if minutes > 0:
         return f"{minutes}m {secs}s"
     return f"{secs}s"
+
+
+def _read_thermal_zone_temp(path: str = "/sys/class/thermal/thermal_zone0/temp") -> float | None:
+    try:
+        raw = Path(path).read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        return None
+
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+
+    if value > 1000:
+        value = value / 1000.0
+    if value <= 0 or value >= 150:
+        return None
+    return round(value, 1)
+
+
+def _safe_load_average() -> dict[str, float | None]:
+    getloadavg = getattr(os, "getloadavg", None)
+    if not callable(getloadavg):
+        return {"load_1m": None, "load_5m": None, "load_15m": None}
+    try:
+        values = getloadavg()
+        if not isinstance(values, tuple) or len(values) != 3:
+            return {"load_1m": None, "load_5m": None, "load_15m": None}
+        load_1m, load_5m, load_15m = values
+        return {
+            "load_1m": round(float(load_1m), 2),
+            "load_5m": round(float(load_5m), 2),
+            "load_15m": round(float(load_15m), 2),
+        }
+    except OSError:
+        return {"load_1m": None, "load_5m": None, "load_15m": None}
+
+
+def _collect_runtime_telemetry() -> dict:
+    telemetry: dict[str, float | int | None] = {
+        "cpu_percent": None,
+        "load_1m": None,
+        "load_5m": None,
+        "load_15m": None,
+        "ram_percent": None,
+        "ram_used_mb": None,
+        "ram_total_mb": None,
+        "core_temp_c": None,
+    }
+
+    telemetry.update(_safe_load_average())
+
+    if psutil is None:
+        telemetry["core_temp_c"] = _read_thermal_zone_temp()
+        return telemetry
+
+    try:
+        cpu_percent = float(psutil.cpu_percent(interval=None))
+        if math.isfinite(cpu_percent):
+            telemetry["cpu_percent"] = round(max(0.0, cpu_percent), 1)
+    except (psutil.Error, ValueError, TypeError):
+        pass
+
+    try:
+        vm = psutil.virtual_memory()
+        telemetry["ram_percent"] = round(float(vm.percent), 1)
+        telemetry["ram_used_mb"] = int(vm.used / (1024 * 1024))
+        telemetry["ram_total_mb"] = int(vm.total / (1024 * 1024))
+    except (psutil.Error, ValueError, TypeError, AttributeError):
+        pass
+
+    core_temp = None
+    try:
+        sensors_temperatures = getattr(psutil, "sensors_temperatures", None)
+        raw_sensors = sensors_temperatures() if callable(sensors_temperatures) else {}
+        sensors: dict[str, Any] = raw_sensors if isinstance(raw_sensors, dict) else {}
+        for entries in sensors.values():
+            for entry in entries:
+                current = getattr(entry, "current", None)
+                if current is None:
+                    continue
+                current_temp = float(current)
+                if current_temp > 0:
+                    core_temp = round(current_temp, 1)
+                    break
+            if core_temp is not None:
+                break
+    except (psutil.Error, ValueError, TypeError, AttributeError):
+        core_temp = None
+
+    telemetry["core_temp_c"] = core_temp if core_temp is not None else _read_thermal_zone_temp()
+    return telemetry
 
 
 def _determine_update_status(running_sha: str, main_sha: str) -> str:
@@ -161,6 +299,67 @@ async def _fetch_latest_main_sha(repo: str, branch: str, token: str) -> str:
     return sha
 
 
+async def _fetch_latest_release_tag(repo: str, token: str) -> dict:
+    timeout = ClientTimeout(total=4)
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "latex-dashboard-monitor",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    url = f"https://api.github.com/repos/{repo}/releases/latest"
+    async with ClientSession(timeout=timeout) as session:
+        async with session.get(url, headers=headers) as response:
+            if response.status != 200:
+                body = await response.text()
+                raise RuntimeError(f"github_release_status={response.status} body={body[:200]}")
+            payload = await response.json()
+
+    tag_name = str(payload.get("tag_name", "")).strip()
+    if not tag_name:
+        raise RuntimeError("missing tag_name in GitHub release response")
+    published_at = str(payload.get("published_at", "")).strip()
+    return {"tag_name": tag_name, "published_at": published_at}
+
+
+async def _runtime_release_version(app: web.Application) -> dict:
+    now = datetime.now(timezone.utc)
+    cache = app["runtime_release_cache"]
+    checked_at = cache.get("checked_at")
+    cached_payload = cache.get("payload")
+    if checked_at and cached_payload:
+        age_seconds = (now - checked_at).total_seconds()
+        if age_seconds < RUNTIME_CACHE_TTL_SECONDS:
+            return cached_payload
+
+    repo = app["runtime_github_repo"]
+    token = app["runtime_github_token"]
+    fallback_version = app["runtime_app_version"]
+
+    release_version = ""
+    release_published_at = ""
+    error = ""
+    try:
+        release_payload = await _fetch_latest_release_tag(repo, token)
+        release_version = release_payload.get("tag_name", "")
+        release_published_at = release_payload.get("published_at", "")
+    except Exception as exc:
+        error = str(exc)
+        LOGGER.warning("Failed to fetch latest GitHub release: %s", error)
+
+    payload = {
+        "release_version": release_version or fallback_version,
+        "release_published_at": release_published_at,
+        "image_pulled_at": now.isoformat(timespec="seconds") if release_version else "",
+        "checked_at": now.isoformat(timespec="seconds"),
+        "error": error,
+    }
+    cache["checked_at"] = now
+    cache["payload"] = payload
+    return payload
+
+
 async def _runtime_update_status(app: web.Application) -> dict:
     now = datetime.now(timezone.utc)
     cache = app["runtime_update_cache"]
@@ -183,6 +382,13 @@ async def _runtime_update_status(app: web.Application) -> dict:
     except Exception as exc:
         error = str(exc)
         LOGGER.warning("Failed to fetch GitHub main SHA: %s", error)
+
+    if not main_sha:
+        local_sha = _git_fallback_branch_sha(branch)
+        if local_sha:
+            main_sha = local_sha
+            if error:
+                error = f"{error}; using local origin/{branch}"
 
     payload = {
         "github_repo": repo,
@@ -219,6 +425,24 @@ def _fetch_one_int(conn: sqlite3.Connection, query: str, params: tuple) -> int:
     return int(value or 0)
 
 
+def _percentile(values: list[int], percentile: float) -> int | None:
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+
+    sorted_values = sorted(values)
+    rank = (len(sorted_values) - 1) * (percentile / 100.0)
+    lower = int(rank)
+    upper = min(lower + 1, len(sorted_values) - 1)
+    if lower == upper:
+        return sorted_values[lower]
+
+    weight = rank - lower
+    interpolated = sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * weight
+    return int(round(interpolated))
+
+
 def _query_summary(db_path: str, window_key: str) -> dict:
     window_hours = WINDOW_HOURS_BY_KEY[window_key]
     threshold = _window_start_iso(window_hours)
@@ -233,6 +457,12 @@ def _query_summary(db_path: str, window_key: str) -> dict:
         "errors": 0,
         "queued": 0,
         "error_rate_percent": 0.0,
+        "latency_ms": {
+            "p50": None,
+            "p95": None,
+            "p99": None,
+            "samples": 0,
+        },
         "by_source": {},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
@@ -265,6 +495,30 @@ def _query_summary(db_path: str, window_key: str) -> dict:
                 """,
                 (threshold, *ERROR_STATUSES),
             )
+
+            table_columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(latex_events);").fetchall()
+            }
+            if "duration_ms" in table_columns:
+                duration_rows = conn.execute(
+                    """
+                    SELECT duration_ms
+                    FROM latex_events
+                    WHERE created_at >= ?
+                      AND status != 'queued'
+                      AND duration_ms IS NOT NULL
+                      AND duration_ms >= 0;
+                    """,
+                    (threshold,),
+                ).fetchall()
+                durations = [int(row[0]) for row in duration_rows if row[0] is not None]
+                response["latency_ms"] = {
+                    "p50": _percentile(durations, 50),
+                    "p95": _percentile(durations, 95),
+                    "p99": _percentile(durations, 99),
+                    "samples": len(durations),
+                }
 
             by_source: dict[str, dict[str, int]] = {}
             rows = conn.execute(
@@ -588,22 +842,20 @@ async def api_runtime(request: web.Request) -> web.Response:
     now = datetime.now(timezone.utc)
     started_at = request.app["runtime_started_at"]
     uptime_seconds = int((now - started_at).total_seconds())
-    update_data = await _runtime_update_status(request.app)
+    release_data = await _runtime_release_version(request.app)
+    telemetry = _collect_runtime_telemetry()
 
     return web.json_response(
         {
             "uptime_seconds": max(0, uptime_seconds),
             "uptime_human": _format_uptime(uptime_seconds),
             "restart_count": request.app["runtime_restart_count"],
-            "app_version": request.app["runtime_app_version"],
-            "build_date": request.app["runtime_build_date"],
-            "git_sha": request.app["runtime_git_sha"],
-            "github_repo": update_data.get("github_repo", ""),
-            "github_branch": update_data.get("github_branch", ""),
-            "main_sha": update_data.get("main_sha", ""),
-            "update_status": update_data.get("update_status", "unknown"),
-            "update_checked_at": update_data.get("checked_at", ""),
-            "update_error": update_data.get("error", ""),
+            "app_version": release_data.get("release_version", request.app["runtime_app_version"]),
+            "release_published_at": release_data.get("release_published_at", ""),
+            "image_pulled_at": release_data.get("image_pulled_at", ""),
+            "release_checked_at": release_data.get("checked_at", ""),
+            "release_error": release_data.get("error", ""),
+            "telemetry": telemetry,
             "generated_at": now.isoformat(timespec="seconds"),
         }
     )
@@ -617,16 +869,18 @@ def create_app() -> web.Application:
     started_at = datetime.now(timezone.utc)
     app["runtime_started_at"] = started_at
     app["runtime_app_version"] = get_app_version()
-    app["runtime_build_date"] = get_build_date()
-    app["runtime_git_sha"] = get_git_sha()
     app["runtime_github_repo"] = get_dashboard_github_repo()
-    app["runtime_github_branch"] = get_dashboard_github_branch()
     app["runtime_github_token"] = get_github_token()
     app["runtime_restart_count"] = _increment_restart_count(
         app["metrics_db_path"],
         started_at.isoformat(timespec="seconds"),
     )
-    app["runtime_update_cache"] = {"checked_at": None, "payload": None}
+    app["runtime_release_cache"] = {"checked_at": None, "payload": None}
+    if psutil is not None:
+        try:
+            psutil.cpu_percent(interval=None)
+        except psutil.Error:
+            LOGGER.debug("Failed to prime psutil cpu_percent")
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
     app.router.add_get("/api/summary", api_summary)
