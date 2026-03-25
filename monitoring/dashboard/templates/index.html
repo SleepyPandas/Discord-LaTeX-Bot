@@ -55,14 +55,7 @@
       <article class="metric card">
         <p class="label">Image Version</p>
         <p class="value runtime-value" id="runtime-version">n/a</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Build Date</p>
-        <p class="value runtime-value" id="runtime-build-date">n/a</p>
-      </article>
-      <article class="metric card">
-        <p class="label">Main Branch Status</p>
-        <p class="value runtime-value" id="runtime-update-status">n/a</p>
+        <p class="runtime-meta" id="runtime-version-meta">Pull date unavailable</p>
       </article>
     </section>
 
@@ -163,8 +156,7 @@
     const runtimeUptimeEl = document.getElementById("runtime-uptime");
     const runtimeRestartsEl = document.getElementById("runtime-restarts");
     const runtimeVersionEl = document.getElementById("runtime-version");
-    const runtimeBuildDateEl = document.getElementById("runtime-build-date");
-    const runtimeUpdateStatusEl = document.getElementById("runtime-update-status");
+    const runtimeVersionMetaEl = document.getElementById("runtime-version-meta");
     const eventsBodyEl = document.getElementById("events-body");
     const overviewCanvas = document.getElementById("overview-chart");
     const errorsCanvas = document.getElementById("errors-chart");
@@ -321,6 +313,19 @@
       return `${year} ${month} ${day} - ${hour}:${minute}:${second}`;
     }
 
+    function formatPulledDate(value) {
+      if (!value) return "Pull date unavailable";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return "Pull date unavailable";
+      return `Pulled: ${parsed.toLocaleString([], {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+    }
+
     function upsertLineChart(currentChart, canvasEl, labels, datasets) {
       if (!currentChart) {
         return new Chart(canvasEl, {
@@ -467,23 +472,6 @@
       `).join("");
     }
 
-    function shortSha(value) {
-      const raw = text(value);
-      if (raw === "n/a") return raw;
-      return raw.length > 12 ? raw.slice(0, 12) : raw;
-    }
-
-    function renderUpdateStatus(status, mainSha) {
-      const normalized = String(status || "").toLowerCase();
-      if (normalized === "up_to_date") {
-        return `Up to date (${escapeHtml(shortSha(mainSha))})`;
-      }
-      if (normalized === "update_available") {
-        return `Update available (${escapeHtml(shortSha(mainSha))})`;
-      }
-      return "Unknown";
-    }
-
     async function loadSummary(windowKey) {
       const resp = await fetch(`/api/summary?range=${encodeURIComponent(windowKey)}`, { cache: "no-store" });
       if (!resp.ok) throw new Error("summary request failed");
@@ -530,17 +518,15 @@
     function applyRuntime(data) {
       runtimeUptimeEl.textContent = text(data.uptime_human);
       runtimeRestartsEl.textContent = asNumber(data.restart_count);
-      runtimeVersionEl.textContent = `${text(data.app_version)} (${escapeHtml(shortSha(data.git_sha))})`;
-      runtimeBuildDateEl.textContent = text(data.build_date);
-      runtimeUpdateStatusEl.textContent = renderUpdateStatus(data.update_status, data.main_sha);
+      runtimeVersionEl.textContent = text(data.app_version);
+      runtimeVersionMetaEl.textContent = formatPulledDate(data.image_pulled_at);
     }
 
     function markRuntimeUnavailable() {
       runtimeUptimeEl.textContent = "n/a";
       runtimeRestartsEl.textContent = "n/a";
       runtimeVersionEl.textContent = "n/a";
-      runtimeBuildDateEl.textContent = "n/a";
-      runtimeUpdateStatusEl.textContent = "Unknown";
+      runtimeVersionMetaEl.textContent = "Pull date unavailable";
     }
 
     async function refresh() {

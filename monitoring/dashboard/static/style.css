@@ -152,11 +152,11 @@ h1 {
 }
 
 .runtime-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .cards-grid.runtime-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .runtime-grid .metric {
@@ -194,6 +194,12 @@ h1 {
 .runtime-value {
   font-size: clamp(15px, 1.9vw, 19px);
   line-height: 1.25;
+}
+
+.runtime-meta {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .grid {

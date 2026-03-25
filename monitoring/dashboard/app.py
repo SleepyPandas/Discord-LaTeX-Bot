@@ -200,6 +200,67 @@ async def _fetch_latest_main_sha(repo: str, branch: str, token: str) -> str:
     return sha
 
 
+async def _fetch_latest_release_tag(repo: str, token: str) -> dict:
+    timeout = ClientTimeout(total=4)
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "latex-dashboard-monitor",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    url = f"https://api.github.com/repos/{repo}/releases/latest"
+    async with ClientSession(timeout=timeout) as session:
+        async with session.get(url, headers=headers) as response:
+            if response.status != 200:
+                body = await response.text()
+                raise RuntimeError(f"github_release_status={response.status} body={body[:200]}")
+            payload = await response.json()
+
+    tag_name = str(payload.get("tag_name", "")).strip()
+    if not tag_name:
+        raise RuntimeError("missing tag_name in GitHub release response")
+    published_at = str(payload.get("published_at", "")).strip()
+    return {"tag_name": tag_name, "published_at": published_at}
+
+
+async def _runtime_release_version(app: web.Application) -> dict:
+    now = datetime.now(timezone.utc)
+    cache = app["runtime_release_cache"]
+    checked_at = cache.get("checked_at")
+    cached_payload = cache.get("payload")
+    if checked_at and cached_payload:
+        age_seconds = (now - checked_at).total_seconds()
+        if age_seconds < RUNTIME_CACHE_TTL_SECONDS:
+            return cached_payload
+
+    repo = app["runtime_github_repo"]
+    token = app["runtime_github_token"]
+    fallback_version = app["runtime_app_version"]
+
+    release_version = ""
+    release_published_at = ""
+    error = ""
+    try:
+        release_payload = await _fetch_latest_release_tag(repo, token)
+        release_version = release_payload.get("tag_name", "")
+        release_published_at = release_payload.get("published_at", "")
+    except Exception as exc:
+        error = str(exc)
+        LOGGER.warning("Failed to fetch latest GitHub release: %s", error)
+
+    payload = {
+        "release_version": release_version or fallback_version,
+        "release_published_at": release_published_at,
+        "image_pulled_at": now.isoformat(timespec="seconds") if release_version else "",
+        "checked_at": now.isoformat(timespec="seconds"),
+        "error": error,
+    }
+    cache["checked_at"] = now
+    cache["payload"] = payload
+    return payload
+
+
 async def _runtime_update_status(app: web.Application) -> dict:
     now = datetime.now(timezone.utc)
     cache = app["runtime_update_cache"]
@@ -634,22 +695,18 @@ async def api_runtime(request: web.Request) -> web.Response:
     now = datetime.now(timezone.utc)
     started_at = request.app["runtime_started_at"]
     uptime_seconds = int((now - started_at).total_seconds())
-    update_data = await _runtime_update_status(request.app)
+    release_data = await _runtime_release_version(request.app)
 
     return web.json_response(
         {
             "uptime_seconds": max(0, uptime_seconds),
             "uptime_human": _format_uptime(uptime_seconds),
             "restart_count": request.app["runtime_restart_count"],
-            "app_version": request.app["runtime_app_version"],
-            "build_date": request.app["runtime_build_date"],
-            "git_sha": request.app["runtime_git_sha"],
-            "github_repo": update_data.get("github_repo", ""),
-            "github_branch": update_data.get("github_branch", ""),
-            "main_sha": update_data.get("main_sha", ""),
-            "update_status": update_data.get("update_status", "unknown"),
-            "update_checked_at": update_data.get("checked_at", ""),
-            "update_error": update_data.get("error", ""),
+            "app_version": release_data.get("release_version", request.app["runtime_app_version"]),
+            "release_published_at": release_data.get("release_published_at", ""),
+            "image_pulled_at": release_data.get("image_pulled_at", ""),
+            "release_checked_at": release_data.get("checked_at", ""),
+            "release_error": release_data.get("error", ""),
             "generated_at": now.isoformat(timespec="seconds"),
         }
     )
@@ -663,16 +720,13 @@ def create_app() -> web.Application:
     started_at = datetime.now(timezone.utc)
     app["runtime_started_at"] = started_at
     app["runtime_app_version"] = get_app_version()
-    app["runtime_build_date"] = get_build_date()
-    app["runtime_git_sha"] = get_git_sha()
     app["runtime_github_repo"] = get_dashboard_github_repo()
-    app["runtime_github_branch"] = get_dashboard_github_branch()
     app["runtime_github_token"] = get_github_token()
     app["runtime_restart_count"] = _increment_restart_count(
         app["metrics_db_path"],
         started_at.isoformat(timespec="seconds"),
     )
-    app["runtime_update_cache"] = {"checked_at": None, "payload": None}
+    app["runtime_release_cache"] = {"checked_at": None, "payload": None}
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
     app.router.add_get("/api/summary", api_summary)
