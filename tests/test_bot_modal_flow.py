@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import os
 import sys
 import types
 import unittest
@@ -223,12 +224,33 @@ def _install_bot_import_stubs() -> None:
     sys.modules["discord.ext.tasks"] = tasks_module
 
 
+def _import_bot_module(
+    *,
+    env_overrides: dict[str, str] | None = None,
+    env_removals: tuple[str, ...] = (),
+):
+    _install_bot_import_stubs()
+    sys.modules.pop("bot", None)
+    patched_env = dict(os.environ)
+    for key in env_removals:
+        patched_env.pop(key, None)
+    if env_overrides:
+        patched_env.update(env_overrides)
+
+    with patch.dict(os.environ, patched_env, clear=True):
+        return importlib.import_module("bot")
+
+
 class BotModalFlowTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        _install_bot_import_stubs()
-        sys.modules.pop("bot", None)
-        cls.bot = importlib.import_module("bot")
+        cls.bot = _import_bot_module(
+            env_removals=("LATEX_COMPILE_CONCURRENCY", "LATEX_MAX_QUEUE")
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.bot.executor.shutdown(wait=False, cancel_futures=True)
 
     def test_latex_command_opens_entry_modal_with_default_dpi(self):
         interaction = SimpleNamespace(response=SimpleNamespace(send_modal=AsyncMock()))
@@ -337,6 +359,35 @@ class BotModalFlowTestCase(unittest.TestCase):
             asyncio.run(self.bot.on_ready())
 
         task_mock.start.assert_called_once()
+
+    def test_bot_defaults_compile_concurrency_for_local_renderer(self):
+        bot_module = _import_bot_module(
+            env_removals=("LATEX_COMPILE_CONCURRENCY", "LATEX_MAX_QUEUE")
+        )
+
+        try:
+            self.assertEqual(bot_module.LATEX_COMPILE_CONCURRENCY, 3)
+            self.assertEqual(bot_module.compile_queue._max_concurrent, 3)
+            self.assertEqual(bot_module.compile_queue._max_queued, 20)
+            self.assertEqual(bot_module.executor._max_workers, 3)
+        finally:
+            bot_module.executor.shutdown(wait=False, cancel_futures=True)
+
+    def test_bot_respects_compile_runtime_overrides(self):
+        bot_module = _import_bot_module(
+            env_overrides={
+                "LATEX_COMPILE_CONCURRENCY": "4",
+                "LATEX_MAX_QUEUE": "9",
+            }
+        )
+
+        try:
+            self.assertEqual(bot_module.LATEX_COMPILE_CONCURRENCY, 4)
+            self.assertEqual(bot_module.compile_queue._max_concurrent, 4)
+            self.assertEqual(bot_module.compile_queue._max_queued, 9)
+            self.assertEqual(bot_module.executor._max_workers, 4)
+        finally:
+            bot_module.executor.shutdown(wait=False, cancel_futures=True)
 
 
 if __name__ == "__main__":

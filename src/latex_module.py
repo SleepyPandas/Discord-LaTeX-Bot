@@ -1,9 +1,7 @@
 import logging
 import re
 
-from sympy import preview
-
-from modified_packages import Latex2PNG
+from modified_packages import InlineDviPngRenderer, Latex2PNG
 
 _logger = logging.getLogger(__name__)
 _UNKNOWN_COMPILE_ERROR = (
@@ -11,15 +9,45 @@ _UNKNOWN_COMPILE_ERROR = (
     "If you are using '/' commands, remove comments."
 )
 _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
+_DVIPNG_FAST_PATH_BLOCKLIST = (
+    r"\\documentclass\b",
+    r"\\begin\{document\}",
+    r"\\end\{document\}",
+    r"\\usepackage\b",
+    r"\\(?:re)?newcommand\b",
+    r"\\providecommand\b",
+    r"\\DeclareMathOperator\b",
+    r"\\def\b",
+    r"\\let\b",
+    r"\\includegraphics\b",
+    r"\\graphicspath\b",
+    r"\\input\b",
+    r"\\include\b",
+    r"\\import\b",
+    r"\\subimport\b",
+    r"\\tikz\b",
+    r"\\pgf(?:plots|keys)?\b",
+    r"\\usetikzlibrary\b",
+    r"\\begin\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis|figure|table|tabular\*?|tabularx|verbatim|lstlisting|minted|minipage|itemize|enumerate|description)\}",
+    r"\\end\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis|figure|table|tabular\*?|tabularx|verbatim|lstlisting|minted|minipage|itemize|enumerate|description)\}",
+)
 
 
 # Should Fork or was it pork :)
 
 
+def _matched_dvipng_block_pattern(expr: str) -> str | None:
+    stripped = _strip_legacy_latex_prefix(expr).strip()
+    for pattern in _DVIPNG_FAST_PATH_BLOCKLIST:
+        if re.search(pattern, stripped):
+            return pattern
+    return None
+
+
 def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     """
-    Converts a text to LaTeX png
-    returning a str if it succeeds, False otherwise.
+    Converts LaTeX input to a PNG file.
+    Returns True on success, or a user-facing error string on failure.
 
     Precondition: The text must be properly formatted in LaTeX.
 
@@ -29,116 +57,152 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
      dpi=(1000 , optional) int | sets resolution
     """
 
-    # TODO : /Nodes has strange interaction with preview() from sympy
-    # TODO : Consider using Latex2PNG from tex2img to replace all of sympy preview()
-
-    # Latex2Png requires a full document structure a solution
-    # is to always add a \begin and document class and load a standard set of packages
-    #
-
     if len(expr) > 2000:
         return "Too Complex"
     if dpi > 800:
         return "Too Large"
     expr = remove_hazardous_latex(expr)
+    latex_code, transparent, render_dpi = _prepare_render_request(expr, dpi)
 
-    if r"\documentclass" in expr and r"\begin{tikzpicture}" in expr or r"\documentclass" in expr:
-        latex_code = re.sub(r"\\documentclass.*?{.*?}", r'\\documentclass[border=1mm]{standalone} ', expr)
-        if 'latex' in latex_code:
-            latex_code = latex_code.replace('latex', '', 1)
-        renderer = Latex2PNG()
-        try:
-            png_data = renderer.compile(latex_code, transparent=False, compiler='pdflatex', dpi=520)
-        except Exception as exc:
-            normalized_error = _normalize_error_log(exc)
-            user_error = find_latex_error(normalized_error)
+    try:
+        png_data = _render_png_request(
+            expr=expr,
+            latex_code=latex_code,
+            transparent=transparent,
+            render_dpi=render_dpi,
+            output_file=output_file,
+        )
+    except Exception as exc:
+        normalized_error = _normalize_error_log(exc)
+        user_error = find_latex_error(normalized_error)
 
-            if user_error:
-                _logger.warning(
-                    "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s latex_error=%s",
-                    output_file,
-                    dpi,
-                    len(expr),
-                    user_error,
-                )
-            else:
-                _logger.warning(
-                    "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s err=%s",
-                    output_file,
-                    dpi,
-                    len(expr),
-                    exc,
-                )
-
-            _logger.debug(
-                "Latex2PNG raw compiler output output_file=%s\n%s",
+        if user_error:
+            _logger.warning(
+                "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s latex_error=%s",
                 output_file,
-                normalized_error,
+                dpi,
+                len(expr),
+                user_error,
             )
-            return user_error or _UNKNOWN_COMPILE_ERROR
-
-        # Convert png_data to bytes
-        if isinstance(png_data, list):
-            try:
-                png_bytes = b''.join(png_data)
-            except TypeError:
-                _logger.warning("png_data list contains non-bytes items output_file=%s", output_file)
-                png_bytes = b''.join([item if isinstance(item, bytes) else b'' for item in png_data])
-        elif isinstance(png_data, bytes):
-            png_bytes = png_data
         else:
-            raise TypeError("png_data is neither a list nor bytes.")
+            _logger.warning(
+                "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s err=%s",
+                output_file,
+                dpi,
+                len(expr),
+                exc,
+            )
 
-        # Write to file
-        with open(output_file + '.png', 'wb') as f:
-            f.write(png_bytes)
+        _logger.debug(
+            "Latex2PNG raw compiler output output_file=%s\n%s",
+            output_file,
+            normalized_error,
+        )
+        return user_error or _UNKNOWN_COMPILE_ERROR
 
-        _logger.debug("PNG generated output_file=%s.png", output_file)
-        return True
-    else:
-        expr = remove_superfluous(expr)
+    png_bytes = _coerce_png_bytes(png_data, output_file)
 
-        extra_preamble = "\\usepackage{xcolor}\n" \
-                         "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                         "\\color{customtext}\n"
+    with open(output_file + '.png', 'wb') as f:
+        f.write(png_bytes)
 
-        dvioptions = ('-D', str(dpi), '-bg', 'Transparent')
+    _logger.debug("PNG generated output_file=%s.png", output_file)
+    return True
 
-        # Set custom name for file
 
-        output_file = f"{output_file}.png"
+def _is_full_document(expr: str) -> bool:
+    return r"\documentclass" in expr or r"\begin{document}" in expr
 
+
+def _is_dvipng_fast_path_eligible(expr: str) -> bool:
+    stripped = _strip_legacy_latex_prefix(expr).strip()
+    if not stripped or _is_full_document(stripped):
+        return False
+
+    return _matched_dvipng_block_pattern(stripped) is None
+
+
+def _render_png_request(
+        expr: str,
+        latex_code: str,
+        transparent: bool,
+        render_dpi: int,
+        output_file: str,
+):
+    if transparent and _is_dvipng_fast_path_eligible(expr):
         try:
-            preview(expr,
-                    viewer='file',
-                    filename=output_file,
-                    output='png',
-                    euler=False,
-                    fontsize=15,
-                    dvioptions=dvioptions,
-                    extra_preamble=extra_preamble,
-                    # document=False
-                    )
-            return True
+            return InlineDviPngRenderer().compile(
+                latex_code,
+                transparent=transparent,
+                dpi=render_dpi,
+            )
         except Exception as exc:
-            error = find_latex_error(exc)
-            if error:
-                _logger.warning(
-                    "Sympy preview compile failed output_file=%s dpi=%s expr_len=%s latex_error=%s",
-                    output_file,
-                    dpi,
-                    len(expr),
-                    error,
-                )
-                return error
-            else:
-                _logger.exception(
-                    "Sympy preview compile failed without parseable LaTeX error output_file=%s dpi=%s expr_len=%s",
-                    output_file,
-                    dpi,
-                    len(expr),
-                )
-                return _UNKNOWN_COMPILE_ERROR
+            _logger.info(
+                "InlineDviPngRenderer failed output_file=%s dpi=%s expr_len=%s; retrying pdflatex",
+                output_file,
+                render_dpi,
+                len(expr),
+            )
+            _logger.debug(
+                "InlineDviPngRenderer raw compiler output output_file=%s\n%s",
+                output_file,
+                _normalize_error_log(exc),
+            )
+
+    return Latex2PNG().compile(
+        latex_code,
+        transparent=transparent,
+        compiler='pdflatex',
+        dpi=render_dpi,
+    )
+
+
+def _prepare_render_request(expr: str, dpi: int) -> tuple[str, bool, int]:
+    if _is_full_document(expr):
+        return _normalize_full_document(expr), False, dpi
+    return _build_inline_document(remove_superfluous(expr)), True, dpi
+
+
+def _normalize_full_document(expr: str) -> str:
+    latex_code = _strip_legacy_latex_prefix(expr).strip()
+    if r"\documentclass" not in latex_code:
+        return (
+            r"\documentclass[border=1mm]{standalone}" "\n"
+            f"{latex_code}"
+        )
+
+    return re.sub(
+        r"\\documentclass(?:\[[^\]]*\])?\{[^}]+\}",
+        r'\\documentclass[border=1mm]{standalone}',
+        latex_code,
+        count=1,
+    )
+
+
+def _build_inline_document(expr: str) -> str:
+    return (
+        r"\documentclass[border=1mm]{standalone}" "\n"
+        r"\usepackage{amsmath}" "\n"
+        r"\usepackage{amssymb}" "\n"
+        r"\usepackage{amsfonts}" "\n"
+        r"\usepackage{xcolor}" "\n"
+        r"\definecolor{customtext}{HTML}{FFFFFF}" "\n"
+        r"\begin{document}" "\n"
+        r"\color{customtext}" "\n"
+        f"{expr}\n"
+        r"\end{document}"
+    )
+
+
+def _coerce_png_bytes(png_data: list[bytes] | bytes, output_file: str) -> bytes:
+    if isinstance(png_data, list):
+        try:
+            return b''.join(png_data)
+        except TypeError:
+            _logger.warning("png_data list contains non-bytes items output_file=%s", output_file)
+            return b''.join([item if isinstance(item, bytes) else b'' for item in png_data])
+    if isinstance(png_data, bytes):
+        return png_data
+    raise TypeError("png_data is neither a list nor bytes.")
 
 
 def _normalize_error_log(error_log: str | Exception | bytes) -> str:
@@ -247,8 +311,9 @@ def remove_superfluous(expr: str) -> str:
     # Remove any latex str
     # Replace  \fill[blue] with \draw[fill=blue]
 
-    if 'latex' in expr:
-        expr = expr.replace('latex', '', 1)
+    expr = _strip_legacy_latex_prefix(expr).strip()
+
+    if r'\maketitle' in expr or r'\author' in expr or r'\title' in expr:
         expr = expr.replace(r'\maketitle', "")
         expr = expr.replace(r'\author', r'\bf')
         expr = expr.replace(r'\title', r'\bf')
@@ -260,18 +325,82 @@ def remove_superfluous(expr: str) -> str:
 
 
 def _ensure_math_delimiters(expr: str) -> str:
-    """Wrap plain math input in display-math delimiters when missing."""
+    """Wrap plain math input in a broadly compatible display-style math mode."""
     stripped = expr.strip()
+    display_batch_blocks = _extract_display_math_batch_blocks(stripped)
     if not stripped:
-        return stripped
+        result = stripped
+    elif r"\documentclass" in stripped or r"\begin{document}" in stripped:
+        result = stripped
+    elif display_batch_blocks and len(display_batch_blocks) > 1:
+        result = _wrap_display_math_batch(display_batch_blocks)
+    elif _contains_explicit_display_math_blocks(stripped):
+        result = _normalize_display_math_blocks(stripped)
+    elif _has_explicit_math_delimiters(stripped):
+        result = stripped
+    else:
+        result = rf"$\displaystyle {stripped}$"
 
-    if r"\documentclass" in stripped or r"\begin{document}" in stripped:
-        return stripped
+    return result
 
-    if _has_explicit_math_delimiters(stripped):
-        return stripped
 
-    return rf"\[{stripped}\]"
+def _contains_explicit_display_math_blocks(expr: str) -> bool:
+    return bool(
+        re.search(r"(?s)\$\$.+?\$\$", expr)
+        or re.search(r"(?s)\\\[.+?\\\]", expr)
+    )
+
+
+_DISPLAY_MATH_BLOCK_RE = re.compile(r"(?s)\$\$(.+?)\$\$|\\\[(.+?)\\\]")
+
+
+def _extract_display_math_batch_blocks(expr: str) -> list[str] | None:
+    blocks: list[str] = []
+    cursor = 0
+
+    for match in _DISPLAY_MATH_BLOCK_RE.finditer(expr):
+        if expr[cursor:match.start()].strip():
+            return None
+        block = match.group(1) if match.group(1) is not None else match.group(2)
+        blocks.append(block.strip())
+        cursor = match.end()
+
+    if not blocks or expr[cursor:].strip():
+        return None
+
+    return blocks
+
+
+def _normalize_display_math_blocks(expr: str) -> str:
+    expr = re.sub(
+        r"(?s)\$\$(.+?)\$\$",
+        lambda match: _wrap_display_math_content(match.group(1)),
+        expr,
+    )
+    return re.sub(
+        r"(?s)\\\[(.+?)\\\]",
+        lambda match: _wrap_display_math_content(match.group(1)),
+        expr,
+    )
+
+
+def _wrap_display_math_batch(blocks: list[str]) -> str:
+    return (
+        "$\\displaystyle \\begin{gathered}\n"
+        + "\\\\\n".join(blocks)
+        + "\n\\end{gathered}$"
+    )
+
+
+def _wrap_display_math_content(content: str) -> str:
+    return "$\\displaystyle " + content.strip() + "$"
+
+
+def _strip_legacy_latex_prefix(expr: str) -> str:
+    stripped = expr.lstrip()
+    if not re.match(r"latex(?:\s+|$)", stripped):
+        return expr
+    return re.sub(r"^latex(?:\s+|$)", "", stripped, count=1).lstrip()
 
 
 def _has_explicit_math_delimiters(expr: str) -> bool:
