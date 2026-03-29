@@ -3,10 +3,9 @@ FROM python:3.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV LATEX_COMPILE_DIR=/tmp/latex-bot
-ENV TMPDIR=/tmp/latex-bot
 
 # Shared bot base image with the heavy TeX and system dependencies.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-extra \
     texlive-latex-recommended \
@@ -22,5 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN mkdir -p "${LATEX_COMPILE_DIR}" \
     && chmod 1777 "${LATEX_COMPILE_DIR}"
+
+ENV TMPDIR=/tmp/latex-bot
 
 WORKDIR /app
