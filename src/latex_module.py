@@ -9,6 +9,16 @@ _UNKNOWN_COMPILE_ERROR = (
     "If you are using '/' commands, remove comments."
 )
 _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
+_STRUCTURED_STANDALONE_ENV_RE = re.compile(
+    r"\\begin\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis)\}"
+)
+_PREAMBLE_LINE_RE = re.compile(
+    r"(?m)^\s*\\(?:usepackage|usetikzlibrary|RequirePackage|pgfplotsset|tikzset)\b"
+)
+_RAW_TIKZ_BODY_CMD_RE = re.compile(
+    r"\\(?:draw|node|path|coordinate|filldraw|shade|fill|clip|scope|foreach)\b"
+)
+
 _DVIPNG_FAST_PATH_BLOCKLIST = (
     r"\\documentclass\b",
     r"\\begin\{document\}",
@@ -113,6 +123,68 @@ def _is_full_document(expr: str) -> bool:
     return r"\documentclass" in expr or r"\begin{document}" in expr
 
 
+def _looks_like_raw_tikz_body(expr: str) -> bool:
+    """True when expr looks like TikZ drawing commands without a wrapping tikzpicture env."""
+    if not expr or expr.strip() == "":
+        return False
+    if _STRUCTURED_STANDALONE_ENV_RE.search(expr):
+        return False
+    return bool(_RAW_TIKZ_BODY_CMD_RE.search(expr))
+
+
+def _split_leading_preamble_lines(content: str) -> tuple[list[str], str]:
+    """Split leading usepackage / tikz preamble lines from the rest of the body."""
+    lines = content.splitlines()
+    preamble: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if re.match(
+            r"^\s*\\(?:usepackage|usetikzlibrary|RequirePackage|pgfplotsset|tikzset)\b",
+            line,
+        ):
+            preamble.append(line)
+            i += 1
+        elif not line.strip():
+            if preamble:
+                i += 1
+            else:
+                i += 1
+        else:
+            break
+    body = "\n".join(lines[i:]).strip()
+    return preamble, body
+
+
+def _content_suggests_tikz(latex_code: str) -> bool:
+    if _STRUCTURED_STANDALONE_ENV_RE.search(latex_code):
+        return True
+    return _looks_like_raw_tikz_body(latex_code)
+
+
+def _documentclass_options_for_content(latex_code: str) -> str:
+    return "[tikz,border=6pt]" if _content_suggests_tikz(latex_code) else "[border=1mm]"
+
+
+def _needs_standalone_document_shell(expr: str) -> bool:
+    """
+    True when input is not already a full document but needs a standalone file shell
+    (TikZ / pgfplots fragments, raw TikZ commands, or leading preamble-only imports).
+    """
+    stripped = _strip_legacy_latex_prefix(expr).strip()
+    if not stripped:
+        return False
+    if _is_full_document(stripped):
+        return False
+    if _STRUCTURED_STANDALONE_ENV_RE.search(stripped):
+        return True
+    if _PREAMBLE_LINE_RE.search(stripped):
+        return True
+    if _looks_like_raw_tikz_body(stripped):
+        return True
+    return False
+
+
 def _is_dvipng_fast_path_eligible(expr: str) -> bool:
     stripped = _strip_legacy_latex_prefix(expr).strip()
     if not stripped or _is_full_document(stripped):
@@ -157,24 +229,60 @@ def _render_png_request(
 
 
 def _prepare_render_request(expr: str, dpi: int) -> tuple[str, bool, int]:
-    if _is_full_document(expr):
+    stripped = _strip_legacy_latex_prefix(expr).strip()
+    if _is_full_document(stripped) or _needs_standalone_document_shell(stripped):
         return _normalize_full_document(expr), False, dpi
     return _build_inline_document(remove_superfluous(expr)), True, dpi
 
 
-def _normalize_full_document(expr: str) -> str:
-    latex_code = _strip_legacy_latex_prefix(expr).strip()
-    if r"\documentclass" not in latex_code:
-        return (
-            r"\documentclass[border=1mm]{standalone}" "\n"
-            f"{latex_code}"
-        )
+def _maybe_wrap_raw_tikz_body(body: str) -> str:
+    body = body.strip()
+    if not body:
+        return body
+    if _STRUCTURED_STANDALONE_ENV_RE.search(body):
+        return body
+    if _looks_like_raw_tikz_body(body):
+        return "\\begin{tikzpicture}\n" + body + "\n\\end{tikzpicture}"
+    return body
 
+
+def _normalize_first_documentclass_if_needed(latex_code: str) -> str:
+    match = re.search(r"\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}", latex_code)
+    if not match:
+        return latex_code
+    if match.group(1).strip().lower() == "standalone":
+        return latex_code
+    opts = _documentclass_options_for_content(latex_code)
     return re.sub(
         r"\\documentclass(?:\[[^\]]*\])?\{[^}]+\}",
-        r'\\documentclass[border=1mm]{standalone}',
+        rf"\\documentclass{opts}{{standalone}}",
         latex_code,
         count=1,
+    )
+
+
+def _normalize_full_document(expr: str) -> str:
+    latex_code = _strip_legacy_latex_prefix(expr).strip()
+
+    if r"\documentclass" in latex_code:
+        return _normalize_first_documentclass_if_needed(latex_code)
+
+    if r"\begin{document}" in latex_code:
+        opts = _documentclass_options_for_content(latex_code)
+        return rf"\documentclass{opts}{{standalone}}" "\n" f"{latex_code}"
+
+    preamble_lines, body = _split_leading_preamble_lines(latex_code)
+    body_wrapped = _maybe_wrap_raw_tikz_body(body)
+    combined_for_opts = latex_code
+    opts = _documentclass_options_for_content(combined_for_opts)
+
+    preamble_block = ("\n".join(preamble_lines) + "\n") if preamble_lines else ""
+    return (
+        rf"\documentclass{opts}{{standalone}}" "\n"
+        f"{preamble_block}"
+        r"\begin{document}" "\n"
+        f"{body_wrapped}\n"
+        r"\end{document}"
     )
 
 
