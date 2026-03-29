@@ -77,6 +77,37 @@ class LatexModuleTestCase(unittest.TestCase):
         self.assertTrue(result.startswith(r"\documentclass[border=1mm]{standalone}"))
         self.assertIn(r"\begin{document}x\end{document}", result)
 
+    def test_normalize_full_document_wraps_bare_tikzpicture_in_document_body(self):
+        expr = r"\begin{tikzpicture}\draw (0,0) -- (1,1);\end{tikzpicture}"
+        result = latex_module._normalize_full_document(expr)
+
+        self.assertTrue(result.startswith(r"\documentclass[tikz,border=6pt]{standalone}"))
+        doc_pos = result.find(r"\begin{document}")
+        tikz_pos = result.find(r"\begin{tikzpicture}")
+        self.assertNotEqual(doc_pos, -1)
+        self.assertNotEqual(tikz_pos, -1)
+        self.assertLess(doc_pos, tikz_pos)
+        self.assertIn(expr, result)
+        self.assertTrue(result.rstrip().endswith(r"\end{document}"))
+
+    def test_normalize_full_document_wraps_raw_draw_in_tikzpicture_and_document(self):
+        expr = r"\draw (0,0) -- (1,1);"
+        result = latex_module._normalize_full_document(expr)
+
+        self.assertTrue(result.startswith(r"\documentclass[tikz,border=6pt]{standalone}"))
+        doc_pos = result.find(r"\begin{document}")
+        tikz_pos = result.find(r"\begin{tikzpicture}")
+        self.assertLess(doc_pos, tikz_pos)
+        self.assertIn(r"\begin{tikzpicture}", result)
+        self.assertIn(r"\end{tikzpicture}", result)
+        self.assertIn(expr.strip(), result)
+
+    def test_normalize_full_document_preserves_standalone_documentclass_options(self):
+        src = r"\documentclass[tikz,border=10pt]{standalone}\begin{document}y\end{document}"
+        result = latex_module._normalize_full_document(src)
+
+        self.assertIn(r"\documentclass[tikz,border=10pt]{standalone}", result)
+
     def test_text_to_latex_returns_fallback_on_unknown_compile_failure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_base = str(Path(temp_dir) / "failed_render")
@@ -202,6 +233,40 @@ class LatexModuleTestCase(unittest.TestCase):
         self.assertEqual(result, True)
         mock_dvipng_renderer.assert_not_called()
         mock_latex2png.return_value.compile.assert_called_once()
+        compile_args, compile_kwargs = mock_latex2png.return_value.compile.call_args
+        tex = compile_args[0]
+        self.assertIn(r"\documentclass[tikz,border=6pt]{standalone}", tex)
+        self.assertIn(r"\begin{document}", tex)
+        self.assertIn(r"\end{document}", tex)
+        self.assertIn(r"\begin{tikzpicture}", tex)
+        self.assertIn(r"\draw (0,0) -- (1,1);", tex)
+        self.assertNotIn(r"$\displaystyle", tex)
+        self.assertFalse(compile_kwargs.get("transparent", True))
+
+    def test_text_to_latex_routes_raw_draw_fragment_through_pdf_renderer(self):
+        png_payload = PNG_SIGNATURE + b"raw-draw"
+        expr = r"\draw (0,0) rectangle (2,1);"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "raw_draw")
+            with patch.object(latex_module, "InlineDviPngRenderer") as mock_dvipng_renderer, patch.object(
+                latex_module,
+                "Latex2PNG",
+            ) as mock_latex2png:
+                mock_latex2png.return_value.compile.return_value = png_payload
+
+                result = latex_module.text_to_latex(expr, output_base, dpi=300)
+
+        self.assertEqual(result, True)
+        mock_dvipng_renderer.assert_not_called()
+        mock_latex2png.return_value.compile.assert_called_once()
+        compile_args, _compile_kwargs = mock_latex2png.return_value.compile.call_args
+        tex = compile_args[0]
+        self.assertIn(r"\documentclass[tikz,border=6pt]{standalone}", tex)
+        self.assertIn(r"\begin{document}", tex)
+        self.assertIn(r"\begin{tikzpicture}", tex)
+        self.assertIn(expr, tex)
+        self.assertNotIn(r"$\displaystyle", tex)
 
     def test_text_to_latex_routes_full_documents_through_local_renderer(self):
         png_payload = PNG_SIGNATURE + b"unit-test-payload"
