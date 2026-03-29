@@ -7,11 +7,6 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-if "sympy" not in sys.modules:
-    sympy_stub = types.ModuleType("sympy")
-    sympy_stub.preview = lambda *args, **kwargs: None
-    sys.modules["sympy"] = sympy_stub
-
 if "modified_packages" not in sys.modules:
     modified_packages_stub = types.ModuleType("modified_packages")
 
@@ -65,6 +60,31 @@ class LatexModuleTestCase(unittest.TestCase):
         self.assertEqual(result, latex_module._UNKNOWN_COMPILE_ERROR)
         self.assertFalse(Path(f"{output_base}.png").exists())
 
+    def test_text_to_latex_routes_simple_math_through_local_renderer(self):
+        png_payload = PNG_SIGNATURE + b"simple-math"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "simple_render")
+            with patch.object(latex_module, "Latex2PNG") as mock_latex2png:
+                mock_renderer = mock_latex2png.return_value
+                mock_renderer.compile.return_value = png_payload
+
+                result = latex_module.text_to_latex(r"\frac{1}{2}", output_base, dpi=275)
+
+            output_path = Path(f"{output_base}.png")
+            mock_renderer.compile.assert_called_once()
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path.read_bytes(), png_payload)
+            self.assertEqual(result, True)
+
+        compile_args, compile_kwargs = mock_renderer.compile.call_args
+        self.assertIn(r"\documentclass[border=1mm]{standalone}", compile_args[0])
+        self.assertIn(r"\begin{document}", compile_args[0])
+        self.assertIn(r"\[\frac{1}{2}\]", compile_args[0])
+        self.assertEqual(compile_kwargs["compiler"], "pdflatex")
+        self.assertEqual(compile_kwargs["dpi"], 275)
+        self.assertTrue(compile_kwargs["transparent"])
+
     def test_text_to_latex_writes_png_bytes_on_success(self):
         png_payload = PNG_SIGNATURE + b"unit-test-payload"
 
@@ -82,6 +102,12 @@ class LatexModuleTestCase(unittest.TestCase):
             self.assertEqual(output_path.read_bytes(), png_payload)
             self.assertTrue(output_path.read_bytes().startswith(PNG_SIGNATURE))
             self.assertEqual(result, True)
+
+        compile_args, compile_kwargs = mock_renderer.compile.call_args
+        self.assertIn(r"\documentclass[border=1mm]{standalone}", compile_args[0])
+        self.assertEqual(compile_kwargs["compiler"], "pdflatex")
+        self.assertEqual(compile_kwargs["dpi"], 520)
+        self.assertFalse(compile_kwargs["transparent"])
 
 
 if __name__ == "__main__":
