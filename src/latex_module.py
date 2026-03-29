@@ -1,8 +1,6 @@
 import logging
 import re
 
-from sympy import preview
-
 from modified_packages import Latex2PNG
 
 _logger = logging.getLogger(__name__)
@@ -29,116 +27,107 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
      dpi=(1000 , optional) int | sets resolution
     """
 
-    # TODO : /Nodes has strange interaction with preview() from sympy
-    # TODO : Consider using Latex2PNG from tex2img to replace all of sympy preview()
-
-    # Latex2Png requires a full document structure a solution
-    # is to always add a \begin and document class and load a standard set of packages
-    #
-
     if len(expr) > 2000:
         return "Too Complex"
     if dpi > 800:
         return "Too Large"
     expr = remove_hazardous_latex(expr)
 
-    if r"\documentclass" in expr and r"\begin{tikzpicture}" in expr or r"\documentclass" in expr:
-        latex_code = re.sub(r"\\documentclass.*?{.*?}", r'\\documentclass[border=1mm]{standalone} ', expr)
-        if 'latex' in latex_code:
-            latex_code = latex_code.replace('latex', '', 1)
-        renderer = Latex2PNG()
-        try:
-            png_data = renderer.compile(latex_code, transparent=False, compiler='pdflatex', dpi=520)
-        except Exception as exc:
-            normalized_error = _normalize_error_log(exc)
-            user_error = find_latex_error(normalized_error)
-
-            if user_error:
-                _logger.warning(
-                    "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s latex_error=%s",
-                    output_file,
-                    dpi,
-                    len(expr),
-                    user_error,
-                )
-            else:
-                _logger.warning(
-                    "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s err=%s",
-                    output_file,
-                    dpi,
-                    len(expr),
-                    exc,
-                )
-
-            _logger.debug(
-                "Latex2PNG raw compiler output output_file=%s\n%s",
-                output_file,
-                normalized_error,
-            )
-            return user_error or _UNKNOWN_COMPILE_ERROR
-
-        # Convert png_data to bytes
-        if isinstance(png_data, list):
-            try:
-                png_bytes = b''.join(png_data)
-            except TypeError:
-                _logger.warning("png_data list contains non-bytes items output_file=%s", output_file)
-                png_bytes = b''.join([item if isinstance(item, bytes) else b'' for item in png_data])
-        elif isinstance(png_data, bytes):
-            png_bytes = png_data
-        else:
-            raise TypeError("png_data is neither a list nor bytes.")
-
-        # Write to file
-        with open(output_file + '.png', 'wb') as f:
-            f.write(png_bytes)
-
-        _logger.debug("PNG generated output_file=%s.png", output_file)
-        return True
+    if _is_full_document(expr):
+        latex_code = _normalize_full_document(expr)
+        transparent = False
+        render_dpi = 520
     else:
-        expr = remove_superfluous(expr)
+        latex_code = _build_inline_document(remove_superfluous(expr))
+        transparent = True
+        render_dpi = dpi
 
-        extra_preamble = "\\usepackage{xcolor}\n" \
-                         "\\definecolor{customtext}{HTML}{FFFFFF}\n" \
-                         "\\color{customtext}\n"
+    renderer = Latex2PNG()
+    try:
+        png_data = renderer.compile(
+            latex_code,
+            transparent=transparent,
+            compiler='pdflatex',
+            dpi=render_dpi,
+        )
+    except Exception as exc:
+        normalized_error = _normalize_error_log(exc)
+        user_error = find_latex_error(normalized_error)
 
-        dvioptions = ('-D', str(dpi), '-bg', 'Transparent')
+        if user_error:
+            _logger.warning(
+                "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s latex_error=%s",
+                output_file,
+                dpi,
+                len(expr),
+                user_error,
+            )
+        else:
+            _logger.warning(
+                "Latex2PNG compile failed output_file=%s dpi=%s expr_len=%s err=%s",
+                output_file,
+                dpi,
+                len(expr),
+                exc,
+            )
 
-        # Set custom name for file
+        _logger.debug(
+            "Latex2PNG raw compiler output output_file=%s\n%s",
+            output_file,
+            normalized_error,
+        )
+        return user_error or _UNKNOWN_COMPILE_ERROR
 
-        output_file = f"{output_file}.png"
+    png_bytes = _coerce_png_bytes(png_data, output_file)
 
+    with open(output_file + '.png', 'wb') as f:
+        f.write(png_bytes)
+
+    _logger.debug("PNG generated output_file=%s.png", output_file)
+    return True
+
+
+def _is_full_document(expr: str) -> bool:
+    return r"\documentclass" in expr or r"\begin{document}" in expr
+
+
+def _normalize_full_document(expr: str) -> str:
+    latex_code = re.sub(
+        r"\\documentclass(?:\[[^\]]*\])?\{[^}]+\}",
+        r'\\documentclass[border=1mm]{standalone}',
+        expr,
+        count=1,
+    )
+    if 'latex' in latex_code:
+        latex_code = latex_code.replace('latex', '', 1)
+    return latex_code
+
+
+def _build_inline_document(expr: str) -> str:
+    return (
+        r"\documentclass[border=1mm]{standalone}" "\n"
+        r"\usepackage{amsmath}" "\n"
+        r"\usepackage{amssymb}" "\n"
+        r"\usepackage{amsfonts}" "\n"
+        r"\usepackage{xcolor}" "\n"
+        r"\definecolor{customtext}{HTML}{FFFFFF}" "\n"
+        r"\color{customtext}" "\n"
+        r"\begin{document}" "\n"
+        f"{expr}\n"
+        r"\end{document}"
+    )
+
+
+def _coerce_png_bytes(png_data: list[bytes] | bytes, output_file: str) -> bytes:
+    if isinstance(png_data, list):
         try:
-            preview(expr,
-                    viewer='file',
-                    filename=output_file,
-                    output='png',
-                    euler=False,
-                    fontsize=15,
-                    dvioptions=dvioptions,
-                    extra_preamble=extra_preamble,
-                    # document=False
-                    )
-            return True
-        except Exception as exc:
-            error = find_latex_error(exc)
-            if error:
-                _logger.warning(
-                    "Sympy preview compile failed output_file=%s dpi=%s expr_len=%s latex_error=%s",
-                    output_file,
-                    dpi,
-                    len(expr),
-                    error,
-                )
-                return error
-            else:
-                _logger.exception(
-                    "Sympy preview compile failed without parseable LaTeX error output_file=%s dpi=%s expr_len=%s",
-                    output_file,
-                    dpi,
-                    len(expr),
-                )
-                return _UNKNOWN_COMPILE_ERROR
+            return b''.join(png_data)
+        except TypeError:
+            _logger.warning("png_data list contains non-bytes items output_file=%s", output_file)
+            return b''.join([item if isinstance(item, bytes) else b'' for item in png_data])
+    if isinstance(png_data, bytes):
+        return png_data
+    raise TypeError("png_data is neither a list nor bytes.")
 
 
 def _normalize_error_log(error_log: str | Exception | bytes) -> str:
