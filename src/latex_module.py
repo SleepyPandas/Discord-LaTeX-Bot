@@ -16,8 +16,8 @@ _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
 
 def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     """
-    Converts a text to LaTeX png
-    returning a str if it succeeds, False otherwise.
+    Converts LaTeX input to a PNG file.
+    Returns True on success, or a user-facing error string on failure.
 
     Precondition: The text must be properly formatted in LaTeX.
 
@@ -32,15 +32,7 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     if dpi > 800:
         return "Too Large"
     expr = remove_hazardous_latex(expr)
-
-    if _is_full_document(expr):
-        latex_code = _normalize_full_document(expr)
-        transparent = False
-        render_dpi = 520
-    else:
-        latex_code = _build_inline_document(remove_superfluous(expr))
-        transparent = True
-        render_dpi = dpi
+    latex_code, transparent, render_dpi = _prepare_render_request(expr, dpi)
 
     renderer = Latex2PNG()
     try:
@@ -91,16 +83,26 @@ def _is_full_document(expr: str) -> bool:
     return r"\documentclass" in expr or r"\begin{document}" in expr
 
 
+def _prepare_render_request(expr: str, dpi: int) -> tuple[str, bool, int]:
+    if _is_full_document(expr):
+        return _normalize_full_document(expr), False, dpi
+    return _build_inline_document(remove_superfluous(expr)), True, dpi
+
+
 def _normalize_full_document(expr: str) -> str:
-    latex_code = re.sub(
+    latex_code = _strip_legacy_latex_prefix(expr).strip()
+    if r"\documentclass" not in latex_code:
+        return (
+            r"\documentclass[border=1mm]{standalone}" "\n"
+            f"{latex_code}"
+        )
+
+    return re.sub(
         r"\\documentclass(?:\[[^\]]*\])?\{[^}]+\}",
         r'\\documentclass[border=1mm]{standalone}',
-        expr,
+        latex_code,
         count=1,
     )
-    if 'latex' in latex_code:
-        latex_code = latex_code.replace('latex', '', 1)
-    return latex_code
 
 
 def _build_inline_document(expr: str) -> str:
@@ -236,8 +238,9 @@ def remove_superfluous(expr: str) -> str:
     # Remove any latex str
     # Replace  \fill[blue] with \draw[fill=blue]
 
-    if 'latex' in expr:
-        expr = expr.replace('latex', '', 1)
+    expr = _strip_legacy_latex_prefix(expr).strip()
+
+    if r'\maketitle' in expr or r'\author' in expr or r'\title' in expr:
         expr = expr.replace(r'\maketitle', "")
         expr = expr.replace(r'\author', r'\bf')
         expr = expr.replace(r'\title', r'\bf')
@@ -261,6 +264,13 @@ def _ensure_math_delimiters(expr: str) -> str:
         return stripped
 
     return rf"\[{stripped}\]"
+
+
+def _strip_legacy_latex_prefix(expr: str) -> str:
+    stripped = expr.lstrip()
+    if not re.match(r"latex(?:\s+|$)", stripped):
+        return expr
+    return re.sub(r"^latex(?:\s+|$)", "", stripped, count=1).lstrip()
 
 
 def _has_explicit_math_delimiters(expr: str) -> bool:

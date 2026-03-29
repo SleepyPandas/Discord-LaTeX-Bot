@@ -47,6 +47,12 @@ class LatexModuleTestCase(unittest.TestCase):
 
         self.assertEqual(result, r"\[\alpha + \beta\]")
 
+    def test_normalize_full_document_adds_standalone_class_when_missing(self):
+        result = latex_module._normalize_full_document(r"\begin{document}x\end{document}")
+
+        self.assertTrue(result.startswith(r"\documentclass[border=1mm]{standalone}"))
+        self.assertIn(r"\begin{document}x\end{document}", result)
+
     def test_text_to_latex_returns_fallback_on_unknown_compile_failure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_base = str(Path(temp_dir) / "failed_render")
@@ -85,7 +91,7 @@ class LatexModuleTestCase(unittest.TestCase):
         self.assertEqual(compile_kwargs["dpi"], 275)
         self.assertTrue(compile_kwargs["transparent"])
 
-    def test_text_to_latex_writes_png_bytes_on_success(self):
+    def test_text_to_latex_routes_full_documents_through_local_renderer(self):
         png_payload = PNG_SIGNATURE + b"unit-test-payload"
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -94,7 +100,7 @@ class LatexModuleTestCase(unittest.TestCase):
                 mock_renderer = mock_latex2png.return_value
                 mock_renderer.compile.return_value = png_payload
 
-                result = latex_module.text_to_latex(FULL_DOCUMENT, output_base)
+                result = latex_module.text_to_latex(FULL_DOCUMENT, output_base, dpi=410)
 
             output_path = Path(f"{output_base}.png")
             mock_renderer.compile.assert_called_once()
@@ -105,8 +111,9 @@ class LatexModuleTestCase(unittest.TestCase):
 
         compile_args, compile_kwargs = mock_renderer.compile.call_args
         self.assertIn(r"\documentclass[border=1mm]{standalone}", compile_args[0])
+        self.assertIn(r"\begin{document}x\end{document}", compile_args[0])
         self.assertEqual(compile_kwargs["compiler"], "pdflatex")
-        self.assertEqual(compile_kwargs["dpi"], 520)
+        self.assertEqual(compile_kwargs["dpi"], 410)
         self.assertFalse(compile_kwargs["transparent"])
 
 
