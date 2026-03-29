@@ -11,8 +11,26 @@ import discord
 import uuid
 from discord import app_commands, Color
 
+
+def _read_int_env(name: str, default: int, minimum: int = 1) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return default
+
+    return value if value >= minimum else default
+
+
+LATEX_COMPILE_CONCURRENCY = _read_int_env("LATEX_COMPILE_CONCURRENCY", 3)
+LATEX_MAX_QUEUE = _read_int_env("LATEX_MAX_QUEUE", 20)
+
 class CompileQueue:
     def __init__(self, max_concurrent: int = 3, max_queued: int = 20):
+        self._max_concurrent = max_concurrent
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._waiting = 0
         self._max_queued = max_queued
@@ -36,9 +54,10 @@ class CompileQueue:
         if self._semaphore.locked():
             _safe_record_latex_event(source=source, status="queued", dpi=dpi, user_id=user_id)
             if notify_coro:
+                estimated_wait_seconds = position * timeout / max(self._max_concurrent, 1)
                 embed = discord.Embed(
                     title="Queued",
-                    description=f"You are #{position} in the compile queue. Estimated wait: ~{position * timeout / 3:.0f}s.",
+                    description=f"You are #{position} in the compile queue. Estimated wait: ~{estimated_wait_seconds:.0f}s.",
                     color=Color.orange(),
                 )
                 try:
@@ -66,7 +85,10 @@ class CompileQueue:
         finally:
             self._semaphore.release()
 
-compile_queue = CompileQueue(max_concurrent=3, max_queued=20)
+compile_queue = CompileQueue(
+    max_concurrent=LATEX_COMPILE_CONCURRENCY,
+    max_queued=LATEX_MAX_QUEUE,
+)
 
 from discord.ext import commands, tasks
 from latex_module import *
@@ -145,8 +167,8 @@ try:
 except Exception:
     logger.exception("Failed to initialize metrics database path=%s", METRICS_DB_PATH)
 
-# Allocate 3 threads to be used concurrently (tuned for Pi 3)
-executor = ThreadPoolExecutor(max_workers=3)
+# Default to three local render workers when the bot owns the machine.
+executor = ThreadPoolExecutor(max_workers=LATEX_COMPILE_CONCURRENCY)
 
 
 def _create_intents() -> discord.Intents:

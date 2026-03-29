@@ -8,6 +8,8 @@ services:
       - src/.env
     environment:
       LATEX_COMPILE_DIR: ${LATEX_COMPILE_DIR:-/tmp/latex-bot}
+      LATEX_COMPILE_CONCURRENCY: ${LATEX_COMPILE_CONCURRENCY:-3}
+      LATEX_MAX_QUEUE: ${LATEX_MAX_QUEUE:-20}
       METRICS_DB_PATH: /data/metrics.db
       TMPDIR: ${TMPDIR:-/tmp/latex-bot}
     working_dir: /app
@@ -16,7 +18,7 @@ services:
     volumes:
       - .:/app
       - ./monitoring/data:/data
-    mem_limit: 640m
+    mem_limit: ${LATEX_MEM_LIMIT:-768m}
     logging:
       driver: "json-file"
       options:
