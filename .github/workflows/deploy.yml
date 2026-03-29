@@ -1,8 +1,8 @@
 name: Build and Publish Docker Images
 
 on:
-  push:
-    branches: [ "main" ]
+  release:
+    types: [ published ]
   pull_request:
     branches: [ "main" ]
 
@@ -24,19 +24,29 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      bot_base: ${{ steps.filter.outputs.bot_base }}
-      bot: ${{ steps.filter.outputs.bot }}
-      dashboard: ${{ steps.filter.outputs.dashboard }}
+      bot_base: ${{ github.event_name == 'release' && steps.release-filter.outputs.bot_base || steps.filter.outputs.bot_base }}
+      bot: ${{ github.event_name == 'release' && steps.release-filter.outputs.bot || steps.filter.outputs.bot }}
+      dashboard: ${{ github.event_name == 'release' && steps.release-filter.outputs.dashboard || steps.filter.outputs.dashboard }}
 
     steps:
+      - name: Mark all build targets as changed for release publishes
+        if: github.event_name == 'release'
+        id: release-filter
+        run: |
+          echo "bot_base=true" >> "$GITHUB_OUTPUT"
+          echo "bot=true" >> "$GITHUB_OUTPUT"
+          echo "dashboard=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
-        uses: actions/checkout@v4
+        if: github.event_name != 'release'
+        uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
       - name: Detect changed build targets
+        if: github.event_name != 'release'
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4.0.1
         with:
           filters: |
             bot_base:
@@ -63,20 +73,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4.0.0
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push bot base image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7.0.0
         with:
           context: .
           file: Dockerfile.bot-base
@@ -91,7 +101,7 @@ jobs:
             type=registry,ref=${{ env.BOT_BASE_IMAGE }}:buildcache,mode=max
 
       - name: Clean up old bot base images
-        uses: actions/delete-package-versions@v5
+        uses: actions/delete-package-versions@v5.0.0
         continue-on-error: true
         with:
           package-name: 'discord-latex-bot-base'
@@ -109,15 +119,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4.0.0
         with:
           driver: docker
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -125,7 +135,7 @@ jobs:
 
       - name: Build bot base image for PR validation
         if: needs.detect-changes.outputs.bot_base == 'true'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7.0.0
         with:
           context: .
           file: Dockerfile.bot-base
@@ -135,7 +145,7 @@ jobs:
           push: false
 
       - name: Build bot image for PR validation
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7.0.0
         env:
           PR_BOT_BASE_IMAGE: ${{ needs.detect-changes.outputs.bot_base == 'true' && 'sleepypandas/discord-latex-bot-base:pr-validation' || format('{0}:{1}', env.BOT_BASE_IMAGE, env.BOT_BASE_TAG) }}
         with:
@@ -165,20 +175,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4.0.0
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push bot image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7.0.0
         with:
           context: .
           file: Dockerfile
@@ -195,7 +205,7 @@ jobs:
             type=registry,ref=${{ env.BOT_IMAGE }}:buildcache,mode=max
 
       - name: Clean up old bot images
-        uses: actions/delete-package-versions@v5
+        uses: actions/delete-package-versions@v5.0.0
         continue-on-error: true
         with:
           package-name: 'discord-latex-bot'
@@ -213,20 +223,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4.0.0
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build dashboard image for PR validation
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7.0.0
         with:
           context: .
           file: monitoring/dashboard/Dockerfile
@@ -247,20 +257,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4.0.0
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push dashboard image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7.0.0
         with:
           context: .
           file: monitoring/dashboard/Dockerfile
@@ -275,10 +285,11 @@ jobs:
             type=registry,ref=${{ env.DASHBOARD_IMAGE }}:buildcache,mode=max
 
       - name: Clean up old dashboard images
-        uses: actions/delete-package-versions@v5
+        uses: actions/delete-package-versions@v5.0.0
         continue-on-error: true
         with:
           package-name: 'discord-latex-bot-dashboard'
           package-type: 'container'
           min-versions-to-keep: 3
           delete-only-untagged-versions: 'true'
+
