@@ -32,6 +32,22 @@ class LatexModuleTestCase(unittest.TestCase):
 
         self.assertEqual(result, "LaTeX compile error: Missing delimiter.")
 
+    def test_find_latex_error_uses_line_numbers_from_local_compiler_logs(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "[main.log]\n"
+            "main.tex:7: LaTeX Error: Undefined control sequence.\n"
+            "! Undefined control sequence."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX compile error (line 7): LaTeX Error: Undefined control sequence. "
+            "Hint: check command spelling or required package imports.",
+        )
+
     def test_remove_superfluous_wraps_plain_input_in_display_math(self):
         result = latex_module.remove_superfluous(r"\frac{1}{2}")
 

@@ -5,5 +5,4 @@ Pillow==12.1.1
 # protobuf==6.33.2 (commented out because 
 # it conflicts with google-generativeai now downloads best requirement)
 python-dotenv==1.2.1
-requests==2.32.5
 google-generativeai==0.8.6

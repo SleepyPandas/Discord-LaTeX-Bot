@@ -41,11 +41,11 @@ class Latex2PNG(LatexCompiler):
 
     Methods
     -------
-    compile(latex_code, images=None, compiler='lualatex')
+    compile(latex_code, images=None, compiler='pdflatex')
         Compile LaTeX code to PNG file.
     """
 
-    def compile(self, latex_code, images: list[tuple[str, str]] | None = None, compiler='lualatex', transparent=False,
+    def compile(self, latex_code, images: list[tuple[str, str]] | None = None, compiler='pdflatex', transparent=False,
                 dpi=300):
         """ Compile LaTeX code to PNG file.
 
@@ -56,7 +56,7 @@ class Latex2PNG(LatexCompiler):
         images : list[tuple[str, str]], optional
             List of images to include in the PDF file, by default None
         compiler : str, optional
-            LaTeX compiler to use, by default 'lualatex'
+            LaTeX compiler to use, by default 'pdflatex'
         transparent : bool, optional
             LaTeX transparency to use, by default False
         dpi : int, optional
@@ -87,18 +87,18 @@ class AsyncLatex2PNG(AsyncLatexCompiler):
 
     Methods
     -------
-    acompile(latex_code, images=None, compiler='lualatex')
+    acompile(latex_code, images=None, compiler='pdflatex')
         Compile LaTeX code to PNG file.
     """
 
     def compile(self, latex_code,
                 images: list[tuple[str, str]] | None = None,
-                compiler='lualatex'):
+                compiler='pdflatex'):
         raise NotImplementedError("Use acompile instead.")
 
     async def acompile(self, latex_code,
                        images: list[tuple[str, str]] | None = None,
-                       compiler='lualatex'):
+                       compiler='pdflatex'):
         """ Compile LaTeX code to PNG file asynchronously.
 
         Parameters
@@ -108,7 +108,7 @@ class AsyncLatex2PNG(AsyncLatexCompiler):
         images : list[tuple[str, str]], optional
             List of images to include in the PDF file, by default None
         compiler : str, optional
-            LaTeX compiler to use, by default 'lualatex'
+            LaTeX compiler to use, by default 'pdflatex'
 
         Returns
         -------

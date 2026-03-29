@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from modified_packages.exceptions import CompilationError
 from modified_packages.latex_compiler import LatexCompiler
+from modified_packages.tex2img import Latex2PNG
 
 
 class SuccessfulProcess:
@@ -120,6 +121,11 @@ class TimeoutProcess:
         self.returncode = -9
 
 
+class FakeImage:
+    def save(self, buffer, _format):
+        buffer.write(b"png-bytes")
+
+
 class LatexCompilerTestCase(unittest.TestCase):
     def setUp(self):
         SuccessfulProcess.instances = []
@@ -204,6 +210,27 @@ class LatexCompilerTestCase(unittest.TestCase):
         self.assertIn("timed out after 2.0s", error_text)
         self.assertIn("partial stdout", error_text)
         self.assertIn("partial stderr", error_text)
+
+    def test_latex2png_defaults_to_pdflatex(self):
+        renderer = Latex2PNG()
+
+        with patch(
+            "modified_packages.tex2img.LatexCompiler.compile",
+            return_value=b"%PDF-1.7\nunit-test\n",
+        ) as mock_compile, patch(
+            "modified_packages.tex2img.pdf2image.convert_from_bytes",
+            return_value=[FakeImage()],
+        ):
+            png_data = renderer.compile(
+                r"\documentclass{article}\begin{document}ok\end{document}"
+            )
+
+        self.assertEqual(png_data, [b"png-bytes"])
+        mock_compile.assert_called_once_with(
+            r"\documentclass{article}\begin{document}ok\end{document}",
+            None,
+            "pdflatex",
+        )
 
 
 if __name__ == "__main__":
