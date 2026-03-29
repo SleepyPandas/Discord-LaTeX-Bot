@@ -24,6 +24,8 @@ _MAIN_TEX_FILENAME = "main.tex"
 _MAIN_PDF_FILENAME = "main.pdf"
 _MAIN_LOG_FILENAME = "main.log"
 _ERROR_PREFIX = "Compilation failed with error logs:"
+_PROCESS_EXIT_TIMEOUT_SECONDS = 1.0
+_PROCESS_TREE_KILL_TIMEOUT_SECONDS = 3.0
 
 
 class LatexCompiler:
@@ -75,7 +77,7 @@ class LatexCompiler:
 
             return pdf_path.read_bytes()
         finally:
-            shutil.rmtree(working_dir, ignore_errors=True)
+            self._cleanup_working_dir(working_dir)
 
     def _ensure_compile_dir(self) -> str:
         self.compile_dir.mkdir(parents=True, exist_ok=True)
@@ -176,6 +178,9 @@ class LatexCompiler:
                     stderr=exc.stderr,
                 )
             ) from exc
+        finally:
+            if process.poll() is None:
+                self._terminate_process_group(process)
 
         if process.returncode != 0:
             raise CompilationError(
@@ -187,35 +192,64 @@ class LatexCompiler:
                 )
             )
 
+    def _cleanup_working_dir(self, working_dir: Path) -> None:
+        shutil.rmtree(working_dir, ignore_errors=True)
+
     def _terminate_process_group(self, process: subprocess.Popen) -> None:
         if process.poll() is not None:
             return
 
         if os.name == "nt":
+            self._terminate_process_tree_windows(process)
+        else:
+            self._terminate_process_group_posix(process)
+
+        self._wait_for_process_exit(process)
+
+    def _terminate_process_tree_windows(self, process: subprocess.Popen) -> None:
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+                timeout=_PROCESS_TREE_KILL_TIMEOUT_SECONDS,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        if process.poll() is None:
             ctrl_break_event = getattr(signal, "CTRL_BREAK_EVENT", None)
             if ctrl_break_event is not None:
                 try:
                     process.send_signal(ctrl_break_event)
-                    process.wait(timeout=1)
                 except Exception:
                     pass
-            if process.poll() is None:
-                process.kill()
-                try:
-                    process.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    pass
-            return
+                self._wait_for_process_exit(process)
 
+        if process.poll() is None:
+            try:
+                process.kill()
+            except Exception:
+                return
+
+    def _terminate_process_group_posix(self, process: subprocess.Popen) -> None:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             return
 
+    def _wait_for_process_exit(
+            self,
+            process: subprocess.Popen,
+            timeout: float = _PROCESS_EXIT_TIMEOUT_SECONDS,
+    ) -> bool:
         try:
-            process.wait(timeout=1)
+            process.wait(timeout=timeout)
+            return True
         except subprocess.TimeoutExpired:
-            pass
+            return False
 
 
 class AsyncLatexCompiler(LatexCompiler):

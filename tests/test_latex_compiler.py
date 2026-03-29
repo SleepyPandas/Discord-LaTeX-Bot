@@ -1,4 +1,6 @@
 import base64
+import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -76,12 +78,18 @@ class FailingProcess:
 
 
 class TimeoutProcess:
+    instances = []
+    wait_timeouts = []
+    kill_calls = 0
+    signal_calls = []
+
     def __init__(self, command, cwd=None, **kwargs):
         self.command = command
         self.cwd = Path(cwd)
         self.kwargs = kwargs
         self.pid = 34567
         self.returncode = None
+        type(self).instances.append(self)
 
     def communicate(self, timeout=None):
         (self.cwd / "main.log").write_text(
@@ -99,13 +107,16 @@ class TimeoutProcess:
         return self.returncode
 
     def wait(self, timeout=None):
+        type(self).wait_timeouts.append(timeout)
         self.returncode = -9
         return self.returncode
 
     def kill(self):
+        type(self).kill_calls += 1
         self.returncode = -9
 
-    def send_signal(self, _signal):
+    def send_signal(self, sent_signal):
+        type(self).signal_calls.append(sent_signal)
         self.returncode = -9
 
 
@@ -115,6 +126,10 @@ class LatexCompilerTestCase(unittest.TestCase):
         SuccessfulProcess.last_timeout = None
         SuccessfulProcess.last_tex = ""
         SuccessfulProcess.last_resource = b""
+        TimeoutProcess.instances = []
+        TimeoutProcess.wait_timeouts = []
+        TimeoutProcess.kill_calls = 0
+        TimeoutProcess.signal_calls = []
 
     def test_compile_returns_pdf_bytes_and_cleans_up_workspace(self):
         latex_code = r"\documentclass{article}\begin{document}ok\end{document}"
@@ -161,13 +176,30 @@ class LatexCompilerTestCase(unittest.TestCase):
             compiler = LatexCompiler(compile_dir=compile_root, timeout=2)
 
             with patch("modified_packages.latex_compiler.subprocess.Popen", TimeoutProcess):
-                with patch.object(LatexCompiler, "_terminate_process_group", autospec=True) as mock_terminate:
-                    with self.assertRaises(CompilationError) as ctx:
-                        compiler.compile(r"\documentclass{article}\begin{document}slow\end{document}")
+                if os.name == "nt":
+                    with patch("modified_packages.latex_compiler.subprocess.run") as mock_taskkill:
+                        mock_taskkill.return_value = subprocess.CompletedProcess(
+                            args=["taskkill"],
+                            returncode=0,
+                        )
+                        with self.assertRaises(CompilationError) as ctx:
+                            compiler.compile(r"\documentclass{article}\begin{document}slow\end{document}")
+                else:
+                    with patch("modified_packages.latex_compiler.os.killpg") as mock_killpg:
+                        with self.assertRaises(CompilationError) as ctx:
+                            compiler.compile(r"\documentclass{article}\begin{document}slow\end{document}")
 
             self.assertEqual(list(Path(compile_root).iterdir()), [])
 
-        mock_terminate.assert_called_once()
+        process = TimeoutProcess.instances[0]
+        self.assertIsNotNone(process.kwargs.get("creationflags") if os.name == "nt" else process.kwargs.get("start_new_session"))
+        self.assertIn(1.0, TimeoutProcess.wait_timeouts)
+        if os.name == "nt":
+            self.assertTrue(mock_taskkill.called)
+            self.assertIn("taskkill", mock_taskkill.call_args.args[0][0].lower())
+        else:
+            mock_killpg.assert_called_once_with(process.pid, signal.SIGKILL)
+
         error_text = str(ctx.exception)
         self.assertIn("timed out after 2.0s", error_text)
         self.assertIn("partial stdout", error_text)
