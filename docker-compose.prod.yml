@@ -4,7 +4,11 @@ services:
     env_file:
       - .env
     environment:
+      LATEX_COMPILE_DIR: ${LATEX_COMPILE_DIR:-/tmp/latex-bot}
       METRICS_DB_PATH: /data/metrics.db
+      TMPDIR: ${TMPDIR:-/tmp/latex-bot}
+    tmpfs:
+      - /tmp/latex-bot:rw,noexec,nosuid,nodev,size=${LATEX_TMPFS_SIZE:-256m},mode=1777
     volumes:
       - ./data:/data
     mem_limit: 640m
