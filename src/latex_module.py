@@ -1,7 +1,7 @@
 import logging
 import re
 
-from modified_packages import Latex2PNG
+from modified_packages import InlineDviPngRenderer, Latex2PNG
 
 _logger = logging.getLogger(__name__)
 _UNKNOWN_COMPILE_ERROR = (
@@ -9,9 +9,39 @@ _UNKNOWN_COMPILE_ERROR = (
     "If you are using '/' commands, remove comments."
 )
 _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
+_DVIPNG_FAST_PATH_BLOCKLIST = (
+    r"\\documentclass\b",
+    r"\\begin\{document\}",
+    r"\\end\{document\}",
+    r"\\usepackage\b",
+    r"\\(?:re)?newcommand\b",
+    r"\\providecommand\b",
+    r"\\DeclareMathOperator\b",
+    r"\\def\b",
+    r"\\let\b",
+    r"\\includegraphics\b",
+    r"\\graphicspath\b",
+    r"\\input\b",
+    r"\\include\b",
+    r"\\import\b",
+    r"\\subimport\b",
+    r"\\tikz\b",
+    r"\\pgf(?:plots|keys)?\b",
+    r"\\usetikzlibrary\b",
+    r"\\begin\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis|figure|table|tabular\*?|tabularx|verbatim|lstlisting|minted|minipage|itemize|enumerate|description)\}",
+    r"\\end\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis|figure|table|tabular\*?|tabularx|verbatim|lstlisting|minted|minipage|itemize|enumerate|description)\}",
+)
 
 
 # Should Fork or was it pork :)
+
+
+def _matched_dvipng_block_pattern(expr: str) -> str | None:
+    stripped = _strip_legacy_latex_prefix(expr).strip()
+    for pattern in _DVIPNG_FAST_PATH_BLOCKLIST:
+        if re.search(pattern, stripped):
+            return pattern
+    return None
 
 
 def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
@@ -34,13 +64,13 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     expr = remove_hazardous_latex(expr)
     latex_code, transparent, render_dpi = _prepare_render_request(expr, dpi)
 
-    renderer = Latex2PNG()
     try:
-        png_data = renderer.compile(
-            latex_code,
+        png_data = _render_png_request(
+            expr=expr,
+            latex_code=latex_code,
             transparent=transparent,
-            compiler='pdflatex',
-            dpi=render_dpi,
+            render_dpi=render_dpi,
+            output_file=output_file,
         )
     except Exception as exc:
         normalized_error = _normalize_error_log(exc)
@@ -83,6 +113,49 @@ def _is_full_document(expr: str) -> bool:
     return r"\documentclass" in expr or r"\begin{document}" in expr
 
 
+def _is_dvipng_fast_path_eligible(expr: str) -> bool:
+    stripped = _strip_legacy_latex_prefix(expr).strip()
+    if not stripped or _is_full_document(stripped):
+        return False
+
+    return _matched_dvipng_block_pattern(stripped) is None
+
+
+def _render_png_request(
+        expr: str,
+        latex_code: str,
+        transparent: bool,
+        render_dpi: int,
+        output_file: str,
+):
+    if transparent and _is_dvipng_fast_path_eligible(expr):
+        try:
+            return InlineDviPngRenderer().compile(
+                latex_code,
+                transparent=transparent,
+                dpi=render_dpi,
+            )
+        except Exception as exc:
+            _logger.info(
+                "InlineDviPngRenderer failed output_file=%s dpi=%s expr_len=%s; retrying pdflatex",
+                output_file,
+                render_dpi,
+                len(expr),
+            )
+            _logger.debug(
+                "InlineDviPngRenderer raw compiler output output_file=%s\n%s",
+                output_file,
+                _normalize_error_log(exc),
+            )
+
+    return Latex2PNG().compile(
+        latex_code,
+        transparent=transparent,
+        compiler='pdflatex',
+        dpi=render_dpi,
+    )
+
+
 def _prepare_render_request(expr: str, dpi: int) -> tuple[str, bool, int]:
     if _is_full_document(expr):
         return _normalize_full_document(expr), False, dpi
@@ -113,8 +186,8 @@ def _build_inline_document(expr: str) -> str:
         r"\usepackage{amsfonts}" "\n"
         r"\usepackage{xcolor}" "\n"
         r"\definecolor{customtext}{HTML}{FFFFFF}" "\n"
-        r"\color{customtext}" "\n"
         r"\begin{document}" "\n"
+        r"\color{customtext}" "\n"
         f"{expr}\n"
         r"\end{document}"
     )
@@ -252,18 +325,75 @@ def remove_superfluous(expr: str) -> str:
 
 
 def _ensure_math_delimiters(expr: str) -> str:
-    """Wrap plain math input in display-math delimiters when missing."""
+    """Wrap plain math input in a broadly compatible display-style math mode."""
     stripped = expr.strip()
+    display_batch_blocks = _extract_display_math_batch_blocks(stripped)
     if not stripped:
-        return stripped
+        result = stripped
+    elif r"\documentclass" in stripped or r"\begin{document}" in stripped:
+        result = stripped
+    elif display_batch_blocks and len(display_batch_blocks) > 1:
+        result = _wrap_display_math_batch(display_batch_blocks)
+    elif _contains_explicit_display_math_blocks(stripped):
+        result = _normalize_display_math_blocks(stripped)
+    elif _has_explicit_math_delimiters(stripped):
+        result = stripped
+    else:
+        result = rf"$\displaystyle {stripped}$"
 
-    if r"\documentclass" in stripped or r"\begin{document}" in stripped:
-        return stripped
+    return result
 
-    if _has_explicit_math_delimiters(stripped):
-        return stripped
 
-    return rf"\[{stripped}\]"
+def _contains_explicit_display_math_blocks(expr: str) -> bool:
+    return bool(
+        re.search(r"(?s)\$\$.+?\$\$", expr)
+        or re.search(r"(?s)\\\[.+?\\\]", expr)
+    )
+
+
+_DISPLAY_MATH_BLOCK_RE = re.compile(r"(?s)\$\$(.+?)\$\$|\\\[(.+?)\\\]")
+
+
+def _extract_display_math_batch_blocks(expr: str) -> list[str] | None:
+    blocks: list[str] = []
+    cursor = 0
+
+    for match in _DISPLAY_MATH_BLOCK_RE.finditer(expr):
+        if expr[cursor:match.start()].strip():
+            return None
+        block = match.group(1) if match.group(1) is not None else match.group(2)
+        blocks.append(block.strip())
+        cursor = match.end()
+
+    if not blocks or expr[cursor:].strip():
+        return None
+
+    return blocks
+
+
+def _normalize_display_math_blocks(expr: str) -> str:
+    expr = re.sub(
+        r"(?s)\$\$(.+?)\$\$",
+        lambda match: _wrap_display_math_content(match.group(1)),
+        expr,
+    )
+    return re.sub(
+        r"(?s)\\\[(.+?)\\\]",
+        lambda match: _wrap_display_math_content(match.group(1)),
+        expr,
+    )
+
+
+def _wrap_display_math_batch(blocks: list[str]) -> str:
+    return (
+        "$\\displaystyle \\begin{gathered}\n"
+        + "\\\\\n".join(blocks)
+        + "\n\\end{gathered}$"
+    )
+
+
+def _wrap_display_math_content(content: str) -> str:
+    return "$\\displaystyle " + content.strip() + "$"
 
 
 def _strip_legacy_latex_prefix(expr: str) -> str:
