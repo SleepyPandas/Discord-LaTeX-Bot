@@ -67,7 +67,7 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
      dpi=(1000 , optional) int | sets resolution
     """
 
-    if len(expr) > 2000:
+    if len(expr) > 3000:
         return "Too Complex"
     if dpi > 800:
         return "Too Large"
