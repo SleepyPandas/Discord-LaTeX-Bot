@@ -264,7 +264,10 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertEqual(modal.dpi, self.bot.DEFAULT_DPI)
         self.assertEqual(modal.title, "Enter LaTeX Code")
         self.assertEqual(modal.latex_input.default, "")
-        self.assertEqual(modal.latex_input.kwargs["max_length"], 3000)
+        self.assertEqual(
+            modal.latex_input.kwargs["max_length"],
+            self.bot.DISCORD_MODAL_LATEX_INPUT_CHARS,
+        )
 
     def test_format_compile_error_description_returns_plain_text_for_friendly_errors(self):
         message = "Input too long: Max is 3000 characters."
