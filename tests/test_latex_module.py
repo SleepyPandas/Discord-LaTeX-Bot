@@ -37,6 +37,85 @@ class LatexModuleTestCase(unittest.TestCase):
             "Hint: check command spelling or required package imports.",
         )
 
+    def test_find_latex_error_returns_friendly_fontenc_fatal_message(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "/usr/share/texlive/texmf-dist/tex/latex/base/fontenc.sty:111: ==> Fatal error"
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX dependency error: required fonts are unavailable in this renderer. "
+            "Try standard fonts or remove custom font settings.",
+        )
+
+    def test_find_latex_error_returns_friendly_missing_font_message(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "! LaTeX Font Error: Font family 'customfont' unknown."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX dependency error: required fonts are unavailable in this renderer. "
+            "Try standard fonts or remove custom font settings.",
+        )
+
+    def test_find_latex_error_returns_friendly_missing_package_message(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "! LaTeX Error: File `foo.sty' not found."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX dependency error: a required package is unavailable in this renderer. "
+            "Try removing unsupported \\usepackage lines.",
+        )
+
+    def test_text_to_latex_rejects_input_over_3000_chars(self):
+        result = latex_module.text_to_latex(
+            "x" * (latex_module.MAX_LATEX_INPUT_CHARS + 1),
+            "unused_output",
+        )
+
+        self.assertEqual(
+            result,
+            "Input too long: 3001 characters. Max is 3000 characters.",
+        )
+
+    def test_text_to_latex_ignores_legacy_prefix_when_counting_input_chars(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "legacy_limit")
+            with patch.object(
+                latex_module,
+                "_render_png_request",
+                return_value=PNG_SIGNATURE,
+            ):
+                result = latex_module.text_to_latex(
+                    "latex " + ("x" * latex_module.MAX_LATEX_INPUT_CHARS),
+                    output_base,
+                )
+
+        self.assertTrue(result)
+
+    def test_text_to_latex_rejects_legacy_prefix_input_over_3000_chars(self):
+        result = latex_module.text_to_latex(
+            "latex " + ("x" * (latex_module.MAX_LATEX_INPUT_CHARS + 1)),
+            "unused_output",
+        )
+
+        self.assertEqual(
+            result,
+            "Input too long: 3001 characters. Max is 3000 characters.",
+        )
+
     def test_remove_superfluous_wraps_plain_input_in_display_math(self):
         result = latex_module.remove_superfluous(r"\frac{1}{2}")
 
