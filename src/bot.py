@@ -90,21 +90,6 @@ compile_queue = CompileQueue(
     max_queued=LATEX_MAX_QUEUE,
 )
 
-
-def _is_friendly_compile_error(message: str) -> bool:
-    lowered = message.lower()
-    return (
-        lowered.startswith("input too long:")
-        or lowered.startswith("dpi too large:")
-        or lowered.startswith("latex dependency error:")
-    )
-
-
-def _format_compile_error_description(message: str) -> str:
-    if _is_friendly_compile_error(message):
-        return message
-    return f"```yaml\n{message}\n```"
-
 from discord.ext import commands, tasks
 from latex_module import *
 from logging_config import configure_logging
@@ -318,7 +303,7 @@ class LatexCodeModal(discord.ui.Modal):
         style=discord.TextStyle.long,
         placeholder="Enter your LaTeX code here...",
         required=True,
-        max_length=MAX_LATEX_INPUT_CHARS,
+        max_length=4000,
     )
 
     def __init__(
@@ -466,7 +451,7 @@ async def handle_latex_compilation(
         )
         embed = discord.Embed(
             title="Compilation Error",
-            description=_format_compile_error_description(str(output)),
+            description=f"```yaml\n{output}\n```",
             color=Color.red(),
         )
         view = FixCodeView(latex_code, dpi)
@@ -747,7 +732,7 @@ async def on_message(message):
             )
             embed = discord.Embed(
                 title="Compilation Error",
-                description=_format_compile_error_description(str(output)),
+                description=f"```yaml\n{output}\n```",
                 color=Color.red(),
             )
             view = FixCodeView(latex_code, 275)

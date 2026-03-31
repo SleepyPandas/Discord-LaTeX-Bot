@@ -8,8 +8,6 @@ _UNKNOWN_COMPILE_ERROR = (
     "Failed to compile unsupported or unknown LaTeX code. "
     "If you are using '/' commands, remove comments."
 )
-MAX_LATEX_INPUT_CHARS = 3000
-MAX_RENDER_DPI = 800
 _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
 _STRUCTURED_STANDALONE_ENV_RE = re.compile(
     r"\\begin\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis)\}"
@@ -69,15 +67,10 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
      dpi=(1000 , optional) int | sets resolution
     """
 
-    expr = _strip_legacy_latex_prefix(expr)
-
-    if len(expr) > MAX_LATEX_INPUT_CHARS:
-        return (
-            f"Input too long: {len(expr)} characters. "
-            f"Max is {MAX_LATEX_INPUT_CHARS} characters."
-        )
-    if dpi > MAX_RENDER_DPI:
-        return f"DPI too large: {dpi}. Max is {MAX_RENDER_DPI}."
+    if len(expr) > 2000:
+        return "Too Complex"
+    if dpi > 800:
+        return "Too Large"
     expr = remove_hazardous_latex(expr)
     latex_code, transparent, render_dpi = _prepare_render_request(expr, dpi)
 
@@ -338,41 +331,6 @@ def _normalize_error_log(error_log: str | Exception | bytes) -> str:
     return error_log.strip()
 
 
-def _match_known_compile_error(log_text: str) -> str:
-    """Return a friendly known-error message for common dependency failures."""
-    lowered = log_text.lower()
-    normalized = re.sub(r"\s+", " ", lowered)
-
-    package_missing_patterns = (
-        r"latex error:\s*file\s+[`'\"]?[^\s`'\"]+\.sty[`'\"]?\s+not found",
-        r"\.sty\s+not\s+found",
-    )
-    for pattern in package_missing_patterns:
-        if re.search(pattern, normalized):
-            return (
-                "LaTeX dependency error: a required package is unavailable in this renderer. "
-                "Try removing unsupported \\usepackage lines."
-            )
-
-    font_failure_patterns = (
-        r"fontenc\.sty.*fatal error",
-        r"latex font error",
-        r"mktextfm",
-        r"kpathsea.*font",
-        r"font .* not loadable",
-        r"font .* not found",
-        r"metric \(tfm\) file not found",
-    )
-    for pattern in font_failure_patterns:
-        if re.search(pattern, normalized):
-            return (
-                "LaTeX dependency error: required fonts are unavailable in this renderer. "
-                "Try standard fonts or remove custom font settings."
-            )
-
-    return ""
-
-
 def _extract_latex_error_details(log_text: str) -> tuple[str, int | None]:
     """Extract the most actionable LaTeX error and optional line number."""
     line_no = None
@@ -440,10 +398,6 @@ def find_latex_error(error_log: str | Exception | bytes) -> str:
         error_log: str | Exception | bytes
     """
     normalized_log = _normalize_error_log(error_log)
-    known_error = _match_known_compile_error(normalized_log)
-    if known_error:
-        return known_error
-
     error_message, line_no = _extract_latex_error_details(normalized_log)
     if error_message:
         return _format_human_latex_error(error_message, line_no)

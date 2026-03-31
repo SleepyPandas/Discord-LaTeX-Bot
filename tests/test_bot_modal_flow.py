@@ -29,7 +29,6 @@ def _install_bot_import_stubs() -> None:
 
     latex_module_stub = types.ModuleType("latex_module")
     latex_module_stub.text_to_latex = lambda *args, **kwargs: True
-    latex_module_stub.MAX_LATEX_INPUT_CHARS = 3000
 
     metrics_store_module = types.ModuleType("metrics_store")
     metrics_store_module.init_metrics_db = lambda *args, **kwargs: None
@@ -264,21 +263,6 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertEqual(modal.dpi, self.bot.DEFAULT_DPI)
         self.assertEqual(modal.title, "Enter LaTeX Code")
         self.assertEqual(modal.latex_input.default, "")
-        self.assertEqual(modal.latex_input.kwargs["max_length"], 3000)
-
-    def test_format_compile_error_description_returns_plain_text_for_friendly_errors(self):
-        message = "Input too long: Max is 3000 characters."
-
-        result = self.bot._format_compile_error_description(message)
-
-        self.assertEqual(result, message)
-
-    def test_format_compile_error_description_wraps_technical_errors_in_code_block(self):
-        message = "LaTeX compile error: Missing delimiter."
-
-        result = self.bot._format_compile_error_description(message)
-
-        self.assertEqual(result, "```yaml\nLaTeX compile error: Missing delimiter.\n```")
 
     def test_modal_submit_routes_to_existing_compile_handler(self):
         interaction = SimpleNamespace()
