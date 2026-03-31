@@ -116,6 +116,24 @@ class LatexModuleTestCase(unittest.TestCase):
             "Input too long: 3001 characters. Max is 3000 characters.",
         )
 
+    def test_text_to_latex_surfaces_truncated_tikz_documents_as_length_errors(self):
+        prefix = r"\begin{tikzpicture}\draw (0,0) -- (1,1);"
+        expr = prefix + ("x" * (latex_module.MAX_LATEX_INPUT_CHARS - len(prefix)))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "truncated_tikz")
+            with patch.object(
+                latex_module,
+                "_render_png_request",
+                side_effect=Exception("! File ended while scanning use of \\end ."),
+            ):
+                result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertEqual(
+            result,
+            "Input too long: TikZ document exceeded the 3000 character limit and was truncated.",
+        )
+
     def test_remove_superfluous_wraps_plain_input_in_display_math(self):
         result = latex_module.remove_superfluous(r"\frac{1}{2}")
 

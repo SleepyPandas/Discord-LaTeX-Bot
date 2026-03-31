@@ -20,6 +20,10 @@ _PREAMBLE_LINE_RE = re.compile(
 _RAW_TIKZ_BODY_CMD_RE = re.compile(
     r"\\(?:draw|node|path|coordinate|filldraw|shade|fill|clip|scope|foreach)\b"
 )
+_TRUNCATED_COMPLEX_DOC_ERROR_RE = re.compile(
+    r"file ended while scanning use of\s+\\end\b",
+    re.IGNORECASE,
+)
 
 _DVIPNG_FAST_PATH_BLOCKLIST = (
     r"\\documentclass\b",
@@ -91,6 +95,24 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
         )
     except Exception as exc:
         normalized_error = _normalize_error_log(exc)
+        truncated_input_error = _detect_truncated_complex_input_error(
+            expr,
+            normalized_error,
+        )
+        if truncated_input_error:
+            _logger.warning(
+                "Latex2PNG rejected truncated structured input output_file=%s dpi=%s expr_len=%s",
+                output_file,
+                dpi,
+                len(expr),
+            )
+            _logger.debug(
+                "Latex2PNG raw compiler output output_file=%s\n%s",
+                output_file,
+                normalized_error,
+            )
+            return truncated_input_error
+
         user_error = find_latex_error(normalized_error)
 
         if user_error:
@@ -198,6 +220,26 @@ def _is_dvipng_fast_path_eligible(expr: str) -> bool:
         return False
 
     return _matched_dvipng_block_pattern(stripped) is None
+
+
+def _structured_document_kind(expr: str) -> str:
+    stripped = _strip_legacy_latex_prefix(expr).strip()
+    return "TikZ document" if _content_suggests_tikz(stripped) else "LaTeX document"
+
+
+def _detect_truncated_complex_input_error(expr: str, log_text: str) -> str:
+    stripped = _strip_legacy_latex_prefix(expr).strip()
+    if len(stripped) != MAX_LATEX_INPUT_CHARS:
+        return ""
+    if not (_is_full_document(stripped) or _needs_standalone_document_shell(stripped)):
+        return ""
+    if not _TRUNCATED_COMPLEX_DOC_ERROR_RE.search(log_text):
+        return ""
+
+    return (
+        f"Input too long: {_structured_document_kind(stripped)} exceeded the "
+        f"{MAX_LATEX_INPUT_CHARS} character limit and was truncated."
+    )
 
 
 def _render_png_request(
