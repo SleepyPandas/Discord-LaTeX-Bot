@@ -91,6 +91,8 @@ jobs:
           context: .
           file: Dockerfile.bot-base
           platforms: linux/arm64
+          # GHCR cleanup deletes untagged child manifests from attested image indexes.
+          provenance: false
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ env.BOT_BASE_IMAGE }}:${{ env.BOT_BASE_TAG }}
           cache-from: |
@@ -195,6 +197,8 @@ jobs:
           build-args: |
             BOT_BASE_IMAGE=${{ env.BOT_BASE_IMAGE }}:${{ env.BOT_BASE_TAG }}
           platforms: linux/arm64
+          # Keep the pushed image as a plain single-platform manifest so cleanup is safe.
+          provenance: false
           push: true
           tags: ${{ env.BOT_IMAGE }}:latest
           cache-from: |
@@ -275,6 +279,8 @@ jobs:
           context: .
           file: monitoring/dashboard/Dockerfile
           platforms: linux/arm64
+          # Keep the pushed image as a plain single-platform manifest so cleanup is safe.
+          provenance: false
           push: true
           tags: ${{ env.DASHBOARD_IMAGE }}:latest
           cache-from: |
