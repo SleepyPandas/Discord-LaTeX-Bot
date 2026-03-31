@@ -235,9 +235,9 @@ async def update_presence():
     """
     activity = discord.Activity(
         type=discord.ActivityType.playing,
-        name="Solo - Competitive Integrating",
-        details="Competitive Integrating",
-        state="Playing Solo",
+        name="/help for help",
+        details="",
+        state="",
         party=(1, 1),
     )
     await bot.change_presence(activity=activity)
