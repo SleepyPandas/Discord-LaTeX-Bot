@@ -212,7 +212,7 @@ intents = _create_intents()
 intents.message_content = True
 intents.guilds = True
 activity = discord.Activity(
-    type=discord.ActivityType.playing, name="/help for well, help"
+    type=discord.ActivityType.playing, name="/help for help"
 )
 
 # Intents are required for the bot to function properly
@@ -236,9 +236,6 @@ async def update_presence():
     activity = discord.Activity(
         type=discord.ActivityType.playing,
         name="/help for help",
-        details="",
-        state="",
-        party=(1, 1),
     )
     await bot.change_presence(activity=activity)
     logger.info("Presence updated successfully")
@@ -278,6 +275,12 @@ async def before_update_gist_stats_task():
 
 
 # ==== initializer ====
+
+
+@bot.event
+async def on_resumed():
+    logger.info("Session resumed — presence reapplied")
+    await update_presence()
 
 
 @bot.event
