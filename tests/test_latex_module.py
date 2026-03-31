@@ -19,23 +19,290 @@ class LatexModuleTestCase(unittest.TestCase):
 
         result = latex_module.find_latex_error(compiler_log)
 
-        self.assertEqual(result, "LaTeX compile error: Missing delimiter.")
+        self.assertEqual(result, "LaTeX syntax error: Missing delimiter.")
 
-    def test_find_latex_error_uses_line_numbers_from_local_compiler_logs(self):
+    def test_find_latex_error_maps_generated_line_numbers_back_to_user_input(self):
+        render_request = latex_module._prepare_render_request(r"\foo + 1", 300)
         compiler_log = (
             "Compilation failed with error logs:\n"
             "[main.log]\n"
-            "main.tex:7: LaTeX Error: Undefined control sequence.\n"
-            "! Undefined control sequence."
+            "main.tex:9: Undefined control sequence.\n"
+            "l.9 $\\displaystyle \\foo + 1$"
+        )
+
+        result = latex_module.find_latex_error(compiler_log, render_request=render_request)
+
+        self.assertEqual(
+            result,
+            "LaTeX command error (line 1): `\\foo` is undefined. "
+            "Check the command name or add the required package.",
+        )
+
+    def test_find_latex_error_rewrites_file_ended_scanning_messages(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "! File ended while scanning use of \\frac ."
         )
 
         result = latex_module.find_latex_error(compiler_log)
 
         self.assertEqual(
             result,
-            "LaTeX compile error (line 7): LaTeX Error: Undefined control sequence. "
-            "Hint: check command spelling or required package imports.",
+            "LaTeX syntax error: Missing `}` to finish `\\frac{...}{...}`.",
         )
+
+    def test_find_latex_error_names_missing_environment_package(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:3: LaTeX Error: Environment tikzcd undefined."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX environment error (line 3): `tikzcd` requires "
+            "`\\usepackage{tikz-cd}` in the preamble.",
+        )
+
+    def test_find_latex_error_rewrites_missing_brace_inserted_with_render_request_context(self):
+        render_request = latex_module._prepare_render_request(r"\sqrt{2", 300)
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:9: Missing } inserted.\n"
+            "l.9 $\\displaystyle \\sqrt{2$"
+        )
+
+        result = latex_module.find_latex_error(compiler_log, render_request=render_request)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 1): Missing `}` to finish `\\sqrt{...}`.",
+        )
+
+    def test_find_latex_error_rewrites_missing_dollar_inserted(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:10: Missing $ inserted."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 10): Missing a math delimiter like `$...$` or `\\[...\\]`.",
+        )
+
+    def test_find_latex_error_handles_undefined_control_sequence_without_command_context(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:9: Undefined control sequence."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX command error (line 9): An undefined command was used. "
+            "Check the command name or add the required package.",
+        )
+
+    def test_find_latex_error_formats_plain_latex_error_messages(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:4: LaTeX Error: Missing delimiter."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 4): Missing delimiter.",
+        )
+
+    def test_find_latex_error_formats_bang_prefixed_messages(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "! Extra alignment tab has been changed to \\cr"
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error: Extra alignment tab has been changed to \\cr.",
+        )
+
+    def test_find_latex_error_uses_preflight_issue_as_fallback(self):
+        render_request = latex_module.RenderRequest(
+            source_expr=r"\left( x+1",
+            latex_code="unused",
+            transparent=True,
+            render_dpi=300,
+            input_kind="inline",
+            generated_to_user_line={},
+            preflight_issue=latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message=r"Missing `\right` to match `\left`.",
+                line_no=1,
+            ),
+        )
+
+        result = latex_module.find_latex_error(
+            "Compilation failed with error logs:\n! Emergency stop.",
+            render_request=render_request,
+        )
+
+        self.assertEqual(
+            result,
+            r"LaTeX syntax error (line 1): Missing `\right` to match `\left`.",
+        )
+
+    def test_find_latex_error_returns_sanitized_unknown_fallback_for_fatal_log(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:9: ==> Fatal error occurred, no output PDF file produced!"
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(result, latex_module._UNKNOWN_COMPILE_ERROR)
+
+    def test_helper_normalizes_command_names_and_source_lines(self):
+        self.assertIsNone(latex_module._normalize_command_name(None))
+        self.assertIsNone(latex_module._normalize_command_name("\\"))
+        self.assertEqual(latex_module._normalize_command_name(r"\text@foo"), r"\text")
+        self.assertEqual(latex_module._normalize_command_name(r"\foo@"), r"\foo")
+        self.assertEqual(latex_module._extract_source_line("a\nb", None), "a\nb")
+        self.assertEqual(latex_module._extract_source_line("a\nb", 4), "a\nb")
+
+    def test_helper_extracts_user_commands_and_snippet_commands(self):
+        self.assertIsNone(latex_module._extract_user_command(r"\color{white}", 1))
+        self.assertEqual(latex_module._extract_user_command(r"\foo + \bar", 1), r"\foo")
+        self.assertEqual(latex_module._find_snippet_line_for_generated_line("ignored", None), "")
+        self.assertEqual(
+            latex_module._find_snippet_line_for_generated_line("l.9 \\foo + 1", 9),
+            r"\foo + 1",
+        )
+        self.assertEqual(latex_module._extract_command_from_snippet(r"\foo@ + 1"), r"\foo")
+
+    def test_helper_formats_unknown_environment_errors(self):
+        self.assertEqual(
+            latex_module._format_environment_error("mysteryenv", 4),
+            "LaTeX environment error (line 4): `mysteryenv` is unavailable in this renderer "
+            "or is missing a required package import.",
+        )
+
+    def test_preflight_detects_unexpected_end_environment(self):
+        issue = latex_module._run_preflight_checks(r"\end{aligned}")
+
+        self.assertEqual(
+            issue,
+            latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message=r"Unexpected `\end{aligned}` without a matching `\begin{aligned}`.",
+                line_no=1,
+            ),
+        )
+
+    def test_preflight_detects_mismatched_end_environment(self):
+        issue = latex_module._run_preflight_checks(
+            "\\begin{aligned}\n\\end{bmatrix}"
+        )
+
+        self.assertEqual(
+            issue,
+            latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message=r"Expected `\end{aligned}`, but found `\end{bmatrix}`.",
+                line_no=2,
+            ),
+        )
+
+    def test_preflight_detects_unexpected_math_block_closer(self):
+        issue = latex_module._run_preflight_checks(r"\]")
+
+        self.assertEqual(
+            issue,
+            latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message=r"Unexpected `\]` without a matching `\[`.",
+                line_no=1,
+            ),
+        )
+
+    def test_preflight_detects_missing_closing_parenthesized_math_block(self):
+        issue = latex_module._run_preflight_checks(r"\(x+1")
+
+        self.assertEqual(
+            issue,
+            latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message=r"Missing `\)` to close the math block.",
+                line_no=1,
+            ),
+        )
+
+    def test_preflight_accepts_balanced_math_blocks(self):
+        self.assertIsNone(latex_module._run_preflight_checks(r"\[x\]"))
+        self.assertIsNone(latex_module._run_preflight_checks(r"\(x\)"))
+        self.assertIsNone(latex_module._run_preflight_checks(r"$x$"))
+
+    def test_preflight_detects_missing_closing_double_dollar_math_block(self):
+        issue = latex_module._run_preflight_checks(r"$$x+1")
+
+        self.assertEqual(
+            issue,
+            latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message="Missing closing `$$` to finish the math block.",
+                line_no=1,
+            ),
+        )
+
+    def test_preflight_detects_unexpected_parenthesized_math_closer(self):
+        issue = latex_module._run_preflight_checks(r"\)")
+
+        self.assertEqual(
+            issue,
+            latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message=r"Unexpected `\)` without a matching `\(`.",
+                line_no=1,
+            ),
+        )
+
+    def test_preflight_detects_unexpected_right_command(self):
+        issue = latex_module._run_preflight_checks(r"\right)")
+
+        self.assertEqual(
+            issue,
+            latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message=r"Unexpected `\right` without a matching `\left`.",
+                line_no=1,
+            ),
+        )
+
+    def test_preflight_accepts_balanced_left_right_commands(self):
+        self.assertIsNone(latex_module._run_preflight_checks(r"\left( x \right)"))
+
+    def test_preflight_detects_unexpected_closing_brace(self):
+        issue = latex_module._run_preflight_checks("}")
+
+        self.assertEqual(
+            issue,
+            latex_module.PreflightIssue(
+                category="LaTeX syntax error",
+                message="Unexpected `}` without a matching `{`.",
+                line_no=1,
+            ),
+        )
+
+    def test_preflight_ignores_commented_unsupported_feature(self):
+        issue = latex_module._run_preflight_checks("% \\usepackage{minted}")
+
+        self.assertIsNone(issue)
 
     def test_find_latex_error_returns_friendly_fontenc_fatal_message(self):
         compiler_log = (
@@ -133,6 +400,41 @@ class LatexModuleTestCase(unittest.TestCase):
             result,
             "Input too long: TikZ document exceeded the 3000 character limit and was truncated.",
         )
+
+    def test_text_to_latex_returns_friendly_missing_brace_error_before_compile(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "missing_brace")
+            with patch.object(latex_module, "InlineDviPngRenderer") as mock_dvipng_renderer, patch.object(
+                latex_module,
+                "Latex2PNG",
+            ) as mock_latex2png:
+                result = latex_module.text_to_latex(r"\frac{1}{2", output_base)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 1): Missing `}` to finish `\\frac{...}{...}`.",
+        )
+        mock_dvipng_renderer.assert_not_called()
+        mock_latex2png.assert_not_called()
+
+    def test_text_to_latex_returns_friendly_unsupported_feature_error_before_compile(self):
+        expr = "\\usepackage{minted}\n\\begin{document}x\\end{document}"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "minted")
+            with patch.object(latex_module, "InlineDviPngRenderer") as mock_dvipng_renderer, patch.object(
+                latex_module,
+                "Latex2PNG",
+            ) as mock_latex2png:
+                result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertEqual(
+            result,
+            "Unsupported LaTeX feature (line 1): package `minted` requires shell escape, "
+            "which this renderer disables.",
+        )
+        mock_dvipng_renderer.assert_not_called()
+        mock_latex2png.assert_not_called()
 
     def test_remove_superfluous_wraps_plain_input_in_display_math(self):
         result = latex_module.remove_superfluous(r"\frac{1}{2}")

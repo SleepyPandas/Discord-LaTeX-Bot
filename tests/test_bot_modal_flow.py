@@ -277,11 +277,18 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertEqual(result, message)
 
     def test_format_compile_error_description_wraps_technical_errors_in_code_block(self):
-        message = "LaTeX compile error: Missing delimiter."
+        message = "Internal compiler failure"
 
         result = self.bot._format_compile_error_description(message)
 
-        self.assertEqual(result, "```yaml\nLaTeX compile error: Missing delimiter.\n```")
+        self.assertEqual(result, "```yaml\nInternal compiler failure\n```")
+
+    def test_format_compile_error_description_keeps_friendly_latex_errors_plain_text(self):
+        message = "LaTeX syntax error (line 1): Missing `}` to finish `\\frac{...}{...}`."
+
+        result = self.bot._format_compile_error_description(message)
+
+        self.assertEqual(result, message)
 
     def test_modal_submit_routes_to_existing_compile_handler(self):
         interaction = SimpleNamespace()
