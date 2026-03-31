@@ -93,10 +93,16 @@ compile_queue = CompileQueue(
 
 def _is_friendly_compile_error(message: str) -> bool:
     lowered = message.lower()
-    return (
-        lowered.startswith("input too long:")
-        or lowered.startswith("dpi too large:")
-        or lowered.startswith("latex dependency error:")
+    return lowered.startswith(
+        (
+            "input too long:",
+            "dpi too large:",
+            "latex dependency error",
+            "latex syntax error",
+            "latex command error",
+            "latex environment error",
+            "unsupported latex feature",
+        )
     )
 
 

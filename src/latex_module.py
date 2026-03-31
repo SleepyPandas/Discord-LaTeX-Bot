@@ -1,12 +1,12 @@
 import logging
 import re
+from dataclasses import dataclass, field
 
 from modified_packages import InlineDviPngRenderer, Latex2PNG
 
 _logger = logging.getLogger(__name__)
 _UNKNOWN_COMPILE_ERROR = (
-    "Failed to compile unsupported or unknown LaTeX code. "
-    "If you are using '/' commands, remove comments."
+    "LaTeX syntax error: this code is incomplete or unsupported in this renderer."
 )
 MAX_LATEX_INPUT_CHARS = 3000
 MAX_RENDER_DPI = 800
@@ -24,6 +24,86 @@ _TRUNCATED_COMPLEX_DOC_ERROR_RE = re.compile(
     r"file ended while scanning use of\s+\\end\b",
     re.IGNORECASE,
 )
+_COMMAND_TOKEN_RE = re.compile(r"\\+[A-Za-z@]+")
+_ENVIRONMENT_TOKEN_RE = re.compile(r"\\(begin|end)\{([^}]+)\}")
+_PACKAGE_IMPORT_RE = re.compile(
+    r"\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{([^}]+)\}",
+    re.IGNORECASE,
+)
+_COMMENT_RE = re.compile(r"(?<!\\)%.*$")
+_SHELL_ESCAPE_PATTERNS = (
+    (
+        re.compile(
+            r"\\usepackage(?:\[[^\]]*\])?\{[^}]*\bminted\b[^}]*\}",
+            re.IGNORECASE,
+        ),
+        "package `minted` requires shell escape, which this renderer disables.",
+    ),
+    (
+        re.compile(
+            r"\\(?:begin\{minted\}|mintinline\b|inputminted\b)",
+            re.IGNORECASE,
+        ),
+        "the `minted` feature requires shell escape, which this renderer disables.",
+    ),
+    (
+        re.compile(
+            r"\\usepackage(?:\[[^\]]*\])?\{[^}]*\bpythontex\b[^}]*\}",
+            re.IGNORECASE,
+        ),
+        "package `pythontex` requires external code execution, which this renderer disables.",
+    ),
+    (
+        re.compile(
+            r"\\(?:begin\{pythontex\}|py\b|pyc\b|pyfile\b)",
+            re.IGNORECASE,
+        ),
+        "the `pythontex` feature requires external code execution, which this renderer disables.",
+    ),
+)
+_ENVIRONMENT_PACKAGE_HINTS = {
+    "tikzcd": "tikz-cd",
+    "circuitikz": "circuitikz",
+    "axis": "pgfplots",
+}
+_COMMAND_CLOSE_HINTS = {
+    r"\frac": r"Missing `}` to finish `\frac{...}{...}`.",
+    r"\sqrt": r"Missing `}` to finish `\sqrt{...}`.",
+    r"\text": r"Missing `}` to finish `\text{...}`.",
+}
+_IGNORE_WRAPPER_COMMANDS = {
+    r"\displaystyle",
+    r"\color",
+    r"\begin",
+    r"\end",
+}
+_FRIENDLY_ERROR_PREFIXES = (
+    "input too long:",
+    "dpi too large:",
+    "latex dependency error:",
+    "latex syntax error:",
+    "latex command error:",
+    "latex environment error:",
+    "unsupported latex feature:",
+)
+
+
+@dataclass(frozen=True)
+class PreflightIssue:
+    category: str
+    message: str
+    line_no: int | None = None
+
+
+@dataclass(frozen=True)
+class RenderRequest:
+    source_expr: str
+    latex_code: str
+    transparent: bool
+    render_dpi: int
+    input_kind: str
+    generated_to_user_line: dict[int, int] = field(default_factory=dict)
+    preflight_issue: PreflightIssue | None = None
 
 _DVIPNG_FAST_PATH_BLOCKLIST = (
     r"\\documentclass\b",
@@ -60,6 +140,328 @@ def _matched_dvipng_block_pattern(expr: str) -> str | None:
     return None
 
 
+def _format_user_error(prefix: str, message: str, line_no: int | None = None) -> str:
+    if line_no is None:
+        output = f"{prefix}: {message}"
+    else:
+        output = f"{prefix} (line {line_no}): {message}"
+    return output if len(output) <= 500 else output[:497] + "..."
+
+
+def _format_preflight_issue(issue: PreflightIssue) -> str:
+    return _format_user_error(issue.category, issue.message, issue.line_no)
+
+
+def _strip_comments_preserving_lines(expr: str) -> str:
+    return "\n".join(_COMMENT_RE.sub("", line) for line in expr.splitlines())
+
+
+def _line_number_at_offset(text: str, offset: int) -> int:
+    return text.count("\n", 0, max(offset, 0)) + 1
+
+
+def _split_leading_preamble_lines_with_index(content: str) -> tuple[list[str], str, int]:
+    lines = content.splitlines()
+    preamble: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if re.match(
+            r"^\s*\\(?:usepackage|usetikzlibrary|RequirePackage|pgfplotsset|tikzset)\b",
+            line,
+        ):
+            preamble.append(line)
+            i += 1
+        elif not line.strip():
+            i += 1
+        else:
+            break
+    body = "\n".join(lines[i:]).strip()
+    return preamble, body, i + 1
+
+
+def _identity_line_map(text: str) -> dict[int, int]:
+    lines = text.splitlines() or [text]
+    return {index: index for index in range(1, len(lines) + 1)}
+
+
+def _offset_line_map(text: str, generated_start_line: int, user_start_line: int = 1) -> dict[int, int]:
+    lines = text.splitlines() or [text]
+    return {
+        generated_start_line + index: user_start_line + index
+        for index in range(len(lines))
+    }
+
+
+def _offset_mapping(mapping: dict[int, int], line_offset: int) -> dict[int, int]:
+    return {line_no + line_offset: user_line for line_no, user_line in mapping.items()}
+
+
+def _normalize_command_name(command: str | None) -> str | None:
+    if not command:
+        return None
+    stripped = command.lstrip("\\")
+    if not stripped:
+        return None
+    normalized = "\\" + stripped
+    if normalized.startswith(r"\text@"):
+        return r"\text"
+    if normalized.endswith("@"):
+        normalized = normalized[:-1]
+    return normalized
+
+
+def _format_missing_closing_brace_message(command: str | None) -> str:
+    normalized = _normalize_command_name(command)
+    return _COMMAND_CLOSE_HINTS.get(
+        normalized,
+        "Missing `}` to close this group or command argument.",
+    )
+
+
+def _extract_source_line(expr: str, line_no: int | None) -> str:
+    if line_no is None:
+        return expr
+    lines = expr.splitlines()
+    if 1 <= line_no <= len(lines):
+        return lines[line_no - 1]
+    return expr
+
+
+def _extract_user_command(expr: str, line_no: int | None) -> str | None:
+    source_line = _extract_source_line(expr, line_no)
+    commands = [_normalize_command_name(match.group(0)) for match in _COMMAND_TOKEN_RE.finditer(source_line)]
+    for command in commands:
+        if command and command not in _IGNORE_WRAPPER_COMMANDS:
+            return command
+    return None
+
+
+def _parse_imported_packages(expr: str) -> set[str]:
+    packages: set[str] = set()
+    for match in _PACKAGE_IMPORT_RE.finditer(expr):
+        for package_name in match.group(1).split(","):
+            normalized = package_name.strip().lower()
+            if normalized:
+                packages.add(normalized)
+    return packages
+
+
+def _detect_unsupported_feature(expr: str) -> PreflightIssue | None:
+    for pattern, message in _SHELL_ESCAPE_PATTERNS:
+        match = pattern.search(expr)
+        if match:
+            return PreflightIssue(
+                category="Unsupported LaTeX feature",
+                message=message,
+                line_no=_line_number_at_offset(expr, match.start()),
+            )
+    return None
+
+
+def _detect_environment_balance_issue(expr: str) -> PreflightIssue | None:
+    stack: list[tuple[str, int]] = []
+    for match in _ENVIRONMENT_TOKEN_RE.finditer(expr):
+        token_type = match.group(1)
+        env_name = match.group(2).strip()
+        line_no = _line_number_at_offset(expr, match.start())
+        if token_type == "begin":
+            stack.append((env_name, line_no))
+            continue
+        if not stack:
+            return PreflightIssue(
+                category="LaTeX syntax error",
+                message=f"Unexpected `\\end{{{env_name}}}` without a matching `\\begin{{{env_name}}}`.",
+                line_no=line_no,
+            )
+        open_env, open_line = stack[-1]
+        if open_env != env_name:
+            return PreflightIssue(
+                category="LaTeX syntax error",
+                message=f"Expected `\\end{{{open_env}}}`, but found `\\end{{{env_name}}}`.",
+                line_no=line_no,
+            )
+        stack.pop()
+
+    if stack:
+        env_name, line_no = stack[-1]
+        return PreflightIssue(
+            category="LaTeX syntax error",
+            message=f"Missing `\\end{{{env_name}}}` to close the environment.",
+            line_no=line_no,
+        )
+    return None
+
+
+def _detect_math_delimiter_issue(expr: str) -> PreflightIssue | None:
+    single_dollar_open_line: int | None = None
+    double_dollar_open_line: int | None = None
+    bracket_stack: list[tuple[str, int]] = []
+    i = 0
+    line_no = 1
+    while i < len(expr):
+        if expr[i] == "\n":
+            line_no += 1
+            i += 1
+            continue
+        if expr.startswith(r"\[", i):
+            bracket_stack.append((r"\[", line_no))
+            i += 2
+            continue
+        if expr.startswith(r"\]", i):
+            if not bracket_stack or bracket_stack[-1][0] != r"\[":
+                return PreflightIssue(
+                    category="LaTeX syntax error",
+                    message=r"Unexpected `\]` without a matching `\[`.",
+                    line_no=line_no,
+                )
+            bracket_stack.pop()
+            i += 2
+            continue
+        if expr.startswith(r"\(", i):
+            bracket_stack.append((r"\(", line_no))
+            i += 2
+            continue
+        if expr.startswith(r"\)", i):
+            if not bracket_stack or bracket_stack[-1][0] != r"\(":
+                return PreflightIssue(
+                    category="LaTeX syntax error",
+                    message=r"Unexpected `\)` without a matching `\(`.",
+                    line_no=line_no,
+                )
+            bracket_stack.pop()
+            i += 2
+            continue
+        if expr[i] == "$" and (i == 0 or expr[i - 1] != "\\"):
+            if i + 1 < len(expr) and expr[i + 1] == "$" and (i == 0 or expr[i - 1] != "\\"):
+                if double_dollar_open_line is None:
+                    double_dollar_open_line = line_no
+                else:
+                    double_dollar_open_line = None
+                i += 2
+                continue
+            if single_dollar_open_line is None:
+                single_dollar_open_line = line_no
+            else:
+                single_dollar_open_line = None
+        i += 1
+
+    if bracket_stack:
+        opener, opener_line = bracket_stack[-1]
+        closer = r"\]" if opener == r"\[" else r"\)"
+        return PreflightIssue(
+            category="LaTeX syntax error",
+            message=f"Missing `{closer}` to close the math block.",
+            line_no=opener_line,
+        )
+    if double_dollar_open_line is not None:
+        return PreflightIssue(
+            category="LaTeX syntax error",
+            message="Missing closing `$$` to finish the math block.",
+            line_no=double_dollar_open_line,
+        )
+    if single_dollar_open_line is not None:
+        return PreflightIssue(
+            category="LaTeX syntax error",
+            message="Missing closing `$` to finish the math expression.",
+            line_no=single_dollar_open_line,
+        )
+    return None
+
+
+def _detect_left_right_issue(expr: str) -> PreflightIssue | None:
+    stack: list[int] = []
+    for match in re.finditer(r"\\(?:left|right)\b", expr):
+        token = match.group(0)
+        line_no = _line_number_at_offset(expr, match.start())
+        if token == r"\left":
+            stack.append(line_no)
+            continue
+        if not stack:
+            return PreflightIssue(
+                category="LaTeX syntax error",
+                message=r"Unexpected `\right` without a matching `\left`.",
+                line_no=line_no,
+            )
+        stack.pop()
+    if stack:
+        return PreflightIssue(
+            category="LaTeX syntax error",
+            message=r"Missing `\right` to match `\left`.",
+            line_no=stack[-1],
+        )
+    return None
+
+
+def _detect_brace_issue(expr: str) -> PreflightIssue | None:
+    stack: list[tuple[int, int]] = []
+    i = 0
+    line_no = 1
+    while i < len(expr):
+        char = expr[i]
+        if char == "\n":
+            line_no += 1
+            i += 1
+            continue
+        if char == "\\":
+            i += 2
+            continue
+        if char == "{":
+            stack.append((line_no, i))
+        elif char == "}":
+            if not stack:
+                return PreflightIssue(
+                    category="LaTeX syntax error",
+                    message="Unexpected `}` without a matching `{`.",
+                    line_no=line_no,
+                )
+            stack.pop()
+        i += 1
+
+    if not stack:
+        return None
+
+    open_line, open_offset = stack[-1]
+    command = None
+    for match in _COMMAND_TOKEN_RE.finditer(expr[:open_offset]):
+        command = match.group(0)
+    return PreflightIssue(
+        category="LaTeX syntax error",
+        message=_format_missing_closing_brace_message(command),
+        line_no=open_line,
+    )
+
+
+def _detect_missing_environment_package(expr: str) -> PreflightIssue | None:
+    imported_packages = _parse_imported_packages(expr)
+    for match in re.finditer(r"\\begin\{([^}]+)\}", expr):
+        env_name = match.group(1).strip()
+        required_package = _ENVIRONMENT_PACKAGE_HINTS.get(env_name.lower())
+        if required_package and required_package.lower() not in imported_packages:
+            return PreflightIssue(
+                category="LaTeX environment error",
+                message=f"`{env_name}` requires `\\usepackage{{{required_package}}}` in the preamble.",
+                line_no=_line_number_at_offset(expr, match.start()),
+            )
+    return None
+
+
+def _run_preflight_checks(expr: str) -> PreflightIssue | None:
+    checked_expr = _strip_comments_preserving_lines(expr)
+    for detector in (
+        _detect_unsupported_feature,
+        _detect_environment_balance_issue,
+        _detect_math_delimiter_issue,
+        _detect_left_right_issue,
+        _detect_brace_issue,
+        _detect_missing_environment_package,
+    ):
+        issue = detector(checked_expr)
+        if issue:
+            return issue
+    return None
+
+
 def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     """
     Converts LaTeX input to a PNG file.
@@ -83,20 +485,31 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     if dpi > MAX_RENDER_DPI:
         return f"DPI too large: {dpi}. Max is {MAX_RENDER_DPI}."
     expr = remove_hazardous_latex(expr)
-    latex_code, transparent, render_dpi = _prepare_render_request(expr, dpi)
+    render_request = _prepare_render_request(expr, dpi)
+
+    if render_request.preflight_issue:
+        user_error = _format_preflight_issue(render_request.preflight_issue)
+        _logger.warning(
+            "Latex2PNG rejected invalid input output_file=%s dpi=%s expr_len=%s latex_error=%s",
+            output_file,
+            dpi,
+            len(expr),
+            user_error,
+        )
+        return user_error
 
     try:
         png_data = _render_png_request(
-            expr=expr,
-            latex_code=latex_code,
-            transparent=transparent,
-            render_dpi=render_dpi,
+            expr=render_request.source_expr,
+            latex_code=render_request.latex_code,
+            transparent=render_request.transparent,
+            render_dpi=render_request.render_dpi,
             output_file=output_file,
         )
     except Exception as exc:
         normalized_error = _normalize_error_log(exc)
         truncated_input_error = _detect_truncated_complex_input_error(
-            expr,
+            render_request.source_expr,
             normalized_error,
         )
         if truncated_input_error:
@@ -113,7 +526,10 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
             )
             return truncated_input_error
 
-        user_error = find_latex_error(normalized_error)
+        user_error = find_latex_error(
+            normalized_error,
+            render_request=render_request,
+        )
 
         if user_error:
             _logger.warning(
@@ -163,25 +579,7 @@ def _looks_like_raw_tikz_body(expr: str) -> bool:
 
 def _split_leading_preamble_lines(content: str) -> tuple[list[str], str]:
     """Split leading usepackage / tikz preamble lines from the rest of the body."""
-    lines = content.splitlines()
-    preamble: list[str] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if re.match(
-            r"^\s*\\(?:usepackage|usetikzlibrary|RequirePackage|pgfplotsset|tikzset)\b",
-            line,
-        ):
-            preamble.append(line)
-            i += 1
-        elif not line.strip():
-            if preamble:
-                i += 1
-            else:
-                i += 1
-        else:
-            break
-    body = "\n".join(lines[i:]).strip()
+    preamble, body, _body_start_line = _split_leading_preamble_lines_with_index(content)
     return preamble, body
 
 
@@ -277,11 +675,37 @@ def _render_png_request(
     )
 
 
-def _prepare_render_request(expr: str, dpi: int) -> tuple[str, bool, int]:
+def _prepare_render_request(expr: str, dpi: int) -> RenderRequest:
     stripped = _strip_legacy_latex_prefix(expr).strip()
+    preflight_issue = _run_preflight_checks(stripped)
+    if (
+        preflight_issue
+        and len(stripped) == MAX_LATEX_INPUT_CHARS
+        and (_is_full_document(stripped) or _needs_standalone_document_shell(stripped))
+    ):
+        preflight_issue = None
     if _is_full_document(stripped) or _needs_standalone_document_shell(stripped):
-        return _normalize_full_document(expr), False, dpi
-    return _build_inline_document(remove_superfluous(expr)), True, dpi
+        latex_code, line_map = _normalize_full_document_with_line_map(expr)
+        return RenderRequest(
+            source_expr=stripped,
+            latex_code=latex_code,
+            transparent=False,
+            render_dpi=dpi,
+            input_kind="structured",
+            generated_to_user_line=line_map,
+            preflight_issue=preflight_issue,
+        )
+    inline_expr = remove_superfluous(expr)
+    latex_code, line_map = _build_inline_document_with_line_map(inline_expr)
+    return RenderRequest(
+        source_expr=stripped,
+        latex_code=latex_code,
+        transparent=True,
+        render_dpi=dpi,
+        input_kind="inline",
+        generated_to_user_line=line_map,
+        preflight_issue=preflight_issue,
+    )
 
 
 def _maybe_wrap_raw_tikz_body(body: str) -> str:
@@ -310,33 +734,60 @@ def _normalize_first_documentclass_if_needed(latex_code: str) -> str:
     )
 
 
-def _normalize_full_document(expr: str) -> str:
+def _maybe_wrap_raw_tikz_body_with_line_map(
+    body: str,
+    body_start_line: int,
+) -> tuple[str, dict[int, int]]:
+    body = body.strip()
+    if not body:
+        return body, {}
+    body_map = _offset_line_map(body, 1, body_start_line)
+    if _STRUCTURED_STANDALONE_ENV_RE.search(body):
+        return body, body_map
+    if _looks_like_raw_tikz_body(body):
+        wrapped_body = "\\begin{tikzpicture}\n" + body + "\n\\end{tikzpicture}"
+        return wrapped_body, _offset_mapping(body_map, 1)
+    return body, body_map
+
+
+def _normalize_full_document_with_line_map(expr: str) -> tuple[str, dict[int, int]]:
     latex_code = _strip_legacy_latex_prefix(expr).strip()
 
     if r"\documentclass" in latex_code:
-        return _normalize_first_documentclass_if_needed(latex_code)
+        return _normalize_first_documentclass_if_needed(latex_code), _identity_line_map(latex_code)
 
     if r"\begin{document}" in latex_code:
         opts = _documentclass_options_for_content(latex_code)
-        return rf"\documentclass{opts}{{standalone}}" "\n" f"{latex_code}"
+        return (
+            rf"\documentclass{opts}{{standalone}}" "\n" f"{latex_code}",
+            _offset_line_map(latex_code, 2),
+        )
 
-    preamble_lines, body = _split_leading_preamble_lines(latex_code)
-    body_wrapped = _maybe_wrap_raw_tikz_body(body)
-    combined_for_opts = latex_code
-    opts = _documentclass_options_for_content(combined_for_opts)
+    preamble_lines, body, body_start_line = _split_leading_preamble_lines_with_index(latex_code)
+    body_wrapped, body_map = _maybe_wrap_raw_tikz_body_with_line_map(body, body_start_line)
+    opts = _documentclass_options_for_content(latex_code)
 
     preamble_block = ("\n".join(preamble_lines) + "\n") if preamble_lines else ""
-    return (
+    generated = (
         rf"\documentclass{opts}{{standalone}}" "\n"
         f"{preamble_block}"
         r"\begin{document}" "\n"
         f"{body_wrapped}\n"
         r"\end{document}"
     )
+    line_map: dict[int, int] = {}
+    if preamble_lines:
+        line_map.update(_offset_line_map("\n".join(preamble_lines), 2, 1))
+    line_map.update(_offset_mapping(body_map, len(preamble_lines) + 2))
+    return generated, line_map
 
 
-def _build_inline_document(expr: str) -> str:
-    return (
+def _normalize_full_document(expr: str) -> str:
+    return _normalize_full_document_with_line_map(expr)[0]
+
+
+def _build_inline_document_with_line_map(expr: str) -> tuple[str, dict[int, int]]:
+    generated = (
         r"\documentclass[border=1mm]{standalone}" "\n"
         r"\usepackage{amsmath}" "\n"
         r"\usepackage{amssymb}" "\n"
@@ -348,6 +799,11 @@ def _build_inline_document(expr: str) -> str:
         f"{expr}\n"
         r"\end{document}"
     )
+    return generated, _offset_line_map(expr, 9)
+
+
+def _build_inline_document(expr: str) -> str:
+    return _build_inline_document_with_line_map(expr)[0]
 
 
 def _coerce_png_bytes(png_data: list[bytes] | bytes, output_file: str) -> bytes:
@@ -415,63 +871,176 @@ def _match_known_compile_error(log_text: str) -> str:
     return ""
 
 
-def _extract_latex_error_details(log_text: str) -> tuple[str, int | None]:
-    """Extract the most actionable LaTeX error and optional line number."""
-    line_no = None
+def _extract_generated_line_number(log_text: str) -> int | None:
     line_match = re.search(r"[^\s:]+\.tex:(\d+):", log_text)
-    if line_match:
-        line_no = int(line_match.group(1))
+    return int(line_match.group(1)) if line_match else None
 
-    lines = [line.strip() for line in log_text.splitlines() if line.strip()]
 
-    for line in lines:
-        if "LaTeX Error:" in line:
-            message = line[line.index("LaTeX Error:"):].lstrip("! ").strip()
-            return re.sub(r"\s+", " ", message), line_no
+def _map_generated_line_number(
+    generated_line_no: int | None,
+    render_request: RenderRequest | None,
+) -> int | None:
+    if generated_line_no is None or render_request is None:
+        return generated_line_no
+    return render_request.generated_to_user_line.get(generated_line_no)
 
-    for line in lines:
-        if line.startswith("!"):
-            message = line.lstrip("! ").strip()
-            if message:
-                return re.sub(r"\s+", " ", message), line_no
 
-    fallback_tokens = (
-        "Emergency stop",
-        "Fatal error",
-        "Runaway argument",
-        "Undefined control sequence",
-        "Missing $ inserted",
+def _find_snippet_line_for_generated_line(log_text: str, generated_line_no: int | None) -> str:
+    if generated_line_no is None:
+        return ""
+    match = re.search(rf"(?m)^l\.{generated_line_no}\s+(.*)$", log_text)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_command_from_snippet(snippet_line: str) -> str | None:
+    for match in _COMMAND_TOKEN_RE.finditer(snippet_line):
+        command = _normalize_command_name(match.group(0))
+        if command and command not in _IGNORE_WRAPPER_COMMANDS:
+            return command
+    return None
+
+
+def _extract_best_command(
+    log_text: str,
+    render_request: RenderRequest | None,
+    user_line_no: int | None,
+    generated_line_no: int | None,
+) -> str | None:
+    if render_request is not None:
+        command = _extract_user_command(render_request.source_expr, user_line_no)
+        if command:
+            return command
+    return _extract_command_from_snippet(
+        _find_snippet_line_for_generated_line(log_text, generated_line_no)
     )
-    for line in lines:
-        if any(token.lower() in line.lower() for token in fallback_tokens):
-            return re.sub(r"\s+", " ", line), line_no
-
-    return "", line_no
 
 
-def _format_human_latex_error(message: str, line_no: int | None) -> str:
-    """Format a concise Discord-safe compile error with optional hint."""
-    if line_no is not None:
-        output = f"LaTeX compile error (line {line_no}): {message}"
-    else:
-        output = f"LaTeX compile error: {message}"
-
-    lower_message = message.lower()
-    hint = ""
-    if ".sty" in lower_message and "not found" in lower_message:
-        hint = " Hint: this package may be unavailable in this renderer."
-    elif "missing $ inserted" in lower_message:
-        hint = " Hint: check math delimiters like $...$ or \\[...\\]."
-    elif "undefined control sequence" in lower_message:
-        hint = " Hint: check command spelling or required package imports."
-
-    output = f"{output}{hint}".strip()
-    if len(output) > 500:
-        return output[:497] + "..."
-    return output
+def _format_environment_error(env_name: str, line_no: int | None) -> str:
+    required_package = _ENVIRONMENT_PACKAGE_HINTS.get(env_name.lower())
+    if required_package:
+        return _format_user_error(
+            "LaTeX environment error",
+            f"`{env_name}` requires `\\usepackage{{{required_package}}}` in the preamble.",
+            line_no,
+        )
+    return _format_user_error(
+        "LaTeX environment error",
+        f"`{env_name}` is unavailable in this renderer or is missing a required package import.",
+        line_no,
+    )
 
 
-def find_latex_error(error_log: str | Exception | bytes) -> str:
+def _classify_compile_error(
+    log_text: str,
+    render_request: RenderRequest | None,
+) -> str:
+    generated_line_no = _extract_generated_line_number(log_text)
+    user_line_no = _map_generated_line_number(generated_line_no, render_request)
+    lowered = log_text.lower()
+
+    file_ended_match = re.search(
+        r"file ended while scanning use of\s+(\\[A-Za-z@]+)",
+        log_text,
+        re.IGNORECASE,
+    )
+    if file_ended_match:
+        command = _normalize_command_name(file_ended_match.group(1))
+        return _format_user_error(
+            "LaTeX syntax error",
+            _format_missing_closing_brace_message(command),
+            user_line_no,
+        )
+
+    environment_match = re.search(
+        r"environment\s+([^\s.]+)\s+undefined",
+        log_text,
+        re.IGNORECASE,
+    )
+    if environment_match:
+        return _format_environment_error(environment_match.group(1), user_line_no)
+
+    if "missing } inserted" in lowered:
+        command = _extract_best_command(
+            log_text,
+            render_request,
+            user_line_no,
+            generated_line_no,
+        )
+        return _format_user_error(
+            "LaTeX syntax error",
+            _format_missing_closing_brace_message(command),
+            user_line_no,
+        )
+
+    if "missing $ inserted" in lowered:
+        return _format_user_error(
+            "LaTeX syntax error",
+            "Missing a math delimiter like `$...$` or `\\[...\\]`.",
+            user_line_no,
+        )
+
+    if "undefined control sequence" in lowered:
+        command = _extract_best_command(
+            log_text,
+            render_request,
+            user_line_no,
+            generated_line_no,
+        )
+        if command:
+            return _format_user_error(
+                "LaTeX command error",
+                f"`{command}` is undefined. Check the command name or add the required package.",
+                user_line_no,
+            )
+        return _format_user_error(
+            "LaTeX command error",
+            "An undefined command was used. Check the command name or add the required package.",
+            user_line_no,
+        )
+
+    latex_error_match = re.search(r"LaTeX Error:\s*(.+)", log_text)
+    if latex_error_match:
+        sanitized_message = re.sub(r"\s+", " ", latex_error_match.group(1)).strip().rstrip(".")
+        return _format_user_error(
+            "LaTeX syntax error",
+            sanitized_message + ".",
+            user_line_no,
+        )
+
+    bang_match = re.search(r"(?m)^!\s+(.+)$", log_text)
+    if bang_match:
+        sanitized_message = re.sub(r"\s+", " ", bang_match.group(1)).strip().rstrip(".")
+        if sanitized_message and not any(
+            token in sanitized_message.lower()
+            for token in ("fatal error", "emergency stop", "runaway argument")
+        ):
+            return _format_user_error(
+                "LaTeX syntax error",
+                sanitized_message + ".",
+                user_line_no,
+            )
+
+    if render_request and render_request.preflight_issue:
+        return _format_preflight_issue(render_request.preflight_issue)
+
+    if any(
+        token in lowered
+        for token in (
+            "fatal error occurred",
+            "emergency stop",
+            "runaway argument",
+            "missing \\endgroup inserted",
+        )
+    ):
+        return _UNKNOWN_COMPILE_ERROR
+
+    return ""
+
+
+def find_latex_error(
+    error_log: str | Exception | bytes,
+    render_request: RenderRequest | None = None,
+) -> str:
     """
     Will take an exception error, and parse the error into a str
 
@@ -486,9 +1055,9 @@ def find_latex_error(error_log: str | Exception | bytes) -> str:
     if known_error:
         return known_error
 
-    error_message, line_no = _extract_latex_error_details(normalized_log)
-    if error_message:
-        return _format_human_latex_error(error_message, line_no)
+    classified_error = _classify_compile_error(normalized_log, render_request)
+    if classified_error:
+        return classified_error
     return ""
 
 
