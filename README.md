@@ -187,9 +187,23 @@ Run these quick checks after code changes:
 ```bash
 
 python -m unittest tests.test_latex_module
+python -m unittest tests.test_latex_corpus
 python -m unittest tests.test_metrics_store
 python -m unittest tests.test_dashboard_api
 python -m unittest tests.test_bot_modal_flow
+```
+
+### Corpus-Driven LaTeX Regression
+
+The renderer now has a shared 50-case corpus in `tests/latex_corpus.py`.
+
+- 35 cases are expected to render successfully.
+- 15 cases are expected to fail with friendly user-facing errors.
+
+Run the corpus suite directly:
+
+```bash
+python -m unittest tests.test_latex_corpus
 ```
 
 ## Usage Notes
