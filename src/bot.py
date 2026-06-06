@@ -10,10 +10,16 @@ import time
 import aiohttp
 import discord
 import uuid
+from aiohttp import web
 from discord import app_commands, Color
 
 
-def _read_int_env(name: str, default: int, minimum: int = 1) -> int:
+def _read_int_env(
+    name: str,
+    default: int,
+    minimum: int = 1,
+    maximum: int | None = None,
+) -> int:
     raw_value = os.getenv(name)
     if raw_value is None:
         return default
@@ -23,7 +29,10 @@ def _read_int_env(name: str, default: int, minimum: int = 1) -> int:
     except ValueError:
         return default
 
-    return value if value >= minimum else default
+    if value < minimum or (maximum is not None and value > maximum):
+        return default
+
+    return value
 
 
 LATEX_COMPILE_CONCURRENCY = _read_int_env("LATEX_COMPILE_CONCURRENCY", 3)
@@ -125,9 +134,16 @@ from AIAPI import create_chat_session, reset_history
 load_dotenv()
 configure_logging()
 logger = logging.getLogger(__name__)
+DISCORD_BOT_APP_KEY = web.AppKey("discord_bot", commands.Bot)
 METRICS_DB_PATH = os.getenv(
     "METRICS_DB_PATH",
     str(Path(__file__).resolve().parents[1] / "monitoring" / "data" / "metrics.db"),
+)
+BOT_HEALTH_HOST = os.getenv("BOT_HEALTH_HOST", "0.0.0.0").strip() or "0.0.0.0"
+BOT_HEALTH_PORT = _read_int_env(
+    "BOT_HEALTH_PORT",
+    8082,
+    maximum=65535,
 )
 _warned_missing_heartbeat_url = False
 
@@ -199,7 +215,56 @@ activity = discord.Activity(
     type=discord.ActivityType.playing, name="/help for help"
 )
 
-bot = commands.Bot(
+
+async def bot_health(request: web.Request) -> web.Response:
+    discord_bot = request.app[DISCORD_BOT_APP_KEY]
+    if discord_bot.is_ready():
+        return web.json_response({"status": "awake"})
+    return web.json_response({"status": "unavailable"}, status=503)
+
+
+class LatexBot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._health_runner = None
+
+    async def setup_hook(self):
+        await super().setup_hook()
+        await self.start_health_server()
+
+    async def start_health_server(self):
+        if self._health_runner is not None:
+            return
+
+        health_app = web.Application()
+        health_app[DISCORD_BOT_APP_KEY] = self
+        health_app.router.add_get("/healthz", bot_health)
+
+        runner = web.AppRunner(health_app)
+        try:
+            await runner.setup()
+            site = web.TCPSite(runner, BOT_HEALTH_HOST, BOT_HEALTH_PORT)
+            await site.start()
+        except Exception:
+            await runner.cleanup()
+            raise
+
+        self._health_runner = runner
+        logger.info(
+            "Bot health server listening host=%s port=%s",
+            BOT_HEALTH_HOST,
+            BOT_HEALTH_PORT,
+        )
+
+    async def close(self):
+        if self._health_runner is not None:
+            await self._health_runner.cleanup()
+            self._health_runner = None
+            logger.info("Bot health server stopped")
+        await super().close()
+
+
+bot = LatexBot(
     command_prefix="/",
     intents=intents,
     # Custom Help command provided

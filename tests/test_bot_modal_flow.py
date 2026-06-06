@@ -4,6 +4,7 @@ import os
 import sys
 import types
 import unittest
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -164,15 +165,25 @@ def _install_bot_import_stubs() -> None:
             self.user = "stub-bot"
             self.guilds = []
             self.users = []
+            self._ready = False
 
         def event(self, func):
             return func
+
+        async def setup_hook(self):
+            return None
+
+        async def close(self):
+            return None
 
         async def change_presence(self, *args, **kwargs):
             return None
 
         async def wait_until_ready(self):
             return None
+
+        def is_ready(self):
+            return self._ready
 
         def run(self, *args, **kwargs):
             return None
@@ -253,6 +264,8 @@ class BotModalFlowTestCase(unittest.TestCase):
 
     def setUp(self):
         self.bot._warned_missing_heartbeat_url = False
+        self.bot.bot._health_runner = None
+        self.bot.bot._ready = False
 
     def test_latex_command_opens_entry_modal_with_default_dpi(self):
         interaction = SimpleNamespace(response=SimpleNamespace(send_modal=AsyncMock()))
@@ -401,6 +414,82 @@ class BotModalFlowTestCase(unittest.TestCase):
 
         gist_task_mock.start.assert_called_once()
         heartbeat_task_mock.start.assert_called_once()
+
+    def test_health_endpoint_returns_awake_when_discord_is_ready(self):
+        self.bot.bot._ready = True
+        request = SimpleNamespace(
+            app={self.bot.DISCORD_BOT_APP_KEY: self.bot.bot}
+        )
+
+        response = asyncio.run(self.bot.bot_health(request))
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(json.loads(response.text), {"status": "awake"})
+
+    def test_health_endpoint_returns_unavailable_while_starting(self):
+        request = SimpleNamespace(
+            app={self.bot.DISCORD_BOT_APP_KEY: self.bot.bot}
+        )
+
+        response = asyncio.run(self.bot.bot_health(request))
+
+        self.assertEqual(response.status, 503)
+        self.assertEqual(json.loads(response.text), {"status": "unavailable"})
+
+    def test_health_endpoint_returns_unavailable_after_disconnect(self):
+        self.bot.bot._ready = True
+        self.bot.bot._ready = False
+        request = SimpleNamespace(
+            app={self.bot.DISCORD_BOT_APP_KEY: self.bot.bot}
+        )
+
+        response = asyncio.run(self.bot.bot_health(request))
+
+        self.assertEqual(response.status, 503)
+
+    def test_health_server_starts_only_once(self):
+        runner = SimpleNamespace(setup=AsyncMock(), cleanup=AsyncMock())
+        site = SimpleNamespace(start=AsyncMock())
+
+        with patch.object(
+            self.bot.web,
+            "AppRunner",
+            return_value=runner,
+        ) as runner_mock, patch.object(
+            self.bot.web,
+            "TCPSite",
+            return_value=site,
+        ) as site_mock:
+            asyncio.run(self.bot.bot.start_health_server())
+            asyncio.run(self.bot.bot.start_health_server())
+
+        runner_mock.assert_called_once()
+        runner.setup.assert_awaited_once()
+        site_mock.assert_called_once_with(
+            runner,
+            self.bot.BOT_HEALTH_HOST,
+            self.bot.BOT_HEALTH_PORT,
+        )
+        site.start.assert_awaited_once()
+
+    def test_health_server_cleanup_runs_when_bot_closes(self):
+        runner = SimpleNamespace(cleanup=AsyncMock())
+        self.bot.bot._health_runner = runner
+
+        asyncio.run(self.bot.bot.close())
+
+        runner.cleanup.assert_awaited_once()
+        self.assertIsNone(self.bot.bot._health_runner)
+
+    def test_invalid_health_port_falls_back_to_default(self):
+        bot_module = _import_bot_module(
+            env_overrides={"BOT_HEALTH_PORT": "70000"}
+        )
+
+        try:
+            self.assertEqual(bot_module.BOT_HEALTH_PORT, 8082)
+        finally:
+            bot_module.executor.shutdown(wait=False, cancel_futures=True)
 
     def test_betterstack_heartbeat_sends_configured_request(self):
         class FakeResponse:
