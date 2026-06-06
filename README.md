@@ -22,7 +22,6 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 - Uses timeout guards during rendering and AI responses
 - Local monitoring dashboard with selectable windows (`24h`, `7d`, `30d`, `90d`) and trend charts
 - Optional `/talk-to-me` command powered by Google's Gemini ecosystem
-- Legacy `latex {LaTeX Code}` message command support in servers
 - Button to Edit Code Instead of retyping on Error
 <img width="650" height="175" alt="image" src="https://github.com/user-attachments/assets/75f48881-2fa7-4188-ba98-ac04fbadacff" />
 
@@ -54,7 +53,6 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 | `/ping` | Health check command. |
 | `/talk-to-me <message>` | Optional conversational command (requires Gemini token). |
 | `/clear-history` | Clear chat history used by `/talk-to-me`. |
-| `latex <latex_code>` | Legacy message-based render command (server messages). |
 
 ## Invite Links
 
@@ -66,7 +64,6 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 ### TikZ Example (full document)
 
 ```tex
-latex
 \documentclass[border=1mm]{standalone}
 \usepackage{tikz}
 \usepackage{amsmath}
