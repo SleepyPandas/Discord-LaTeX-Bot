@@ -88,9 +88,10 @@ def _install_bot_import_stubs() -> None:
     class DummyIntents:
         def __init__(self):
             self.message_content = False
+            self.guilds = True
 
         @staticmethod
-        def all():
+        def default():
             return DummyIntents()
 
     class DummyEmbed:
@@ -266,7 +267,8 @@ class BotModalFlowTestCase(unittest.TestCase):
             self.bot.DISCORD_MODAL_LATEX_INPUT_CHARS,
         )
 
-    def test_bot_does_not_request_message_content_intent(self):
+    def test_bot_uses_default_non_privileged_intents(self):
+        self.assertTrue(self.bot.intents.guilds)
         self.assertFalse(self.bot.intents.message_content)
 
     def test_format_compile_error_description_returns_plain_text_for_friendly_errors(self):

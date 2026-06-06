@@ -191,33 +191,11 @@ except Exception:
 # Default to three local render workers when the bot owns the machine.
 executor = ThreadPoolExecutor(max_workers=LATEX_COMPILE_CONCURRENCY)
 
-
-def _create_intents() -> discord.Intents:
-    default_factory = getattr(discord.Intents, "default", None)
-    if callable(default_factory):
-        intents = default_factory()
-        if isinstance(intents, discord.Intents):
-            return intents
-
-    all_factory = getattr(discord.Intents, "all", None)
-    if callable(all_factory):
-        intents = all_factory()
-        if isinstance(intents, discord.Intents):
-            return intents
-
-    return discord.Intents()
-
-
-intents = _create_intents()
-# Application commands receive their inputs through interactions, so privileged
-# message content access must remain disabled for this slash-command-only bot.
-intents.message_content = False
-intents.guilds = True
+# Defaults include guild lifecycle events but exclude privileged message content.
+intents = discord.Intents.default()
 activity = discord.Activity(
     type=discord.ActivityType.playing, name="/help for help"
 )
-
-# Intents are required for the bot to function properly
 
 bot = commands.Bot(
     command_prefix="/",
