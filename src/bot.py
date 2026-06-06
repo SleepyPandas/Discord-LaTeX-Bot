@@ -209,7 +209,9 @@ def _create_intents() -> discord.Intents:
 
 
 intents = _create_intents()
-intents.message_content = True
+# Application commands receive their inputs through interactions, so privileged
+# message content access must remain disabled for this slash-command-only bot.
+intents.message_content = False
 intents.guilds = True
 activity = discord.Activity(
     type=discord.ActivityType.playing, name="/help for help"
@@ -341,11 +343,7 @@ class LatexCodeModal(discord.ui.Modal):
         title: str = "Enter LaTeX Code",
     ):
         super().__init__(title=title)
-        # If code prefix from on_message is included, strip it for editor
-        if original_code.startswith("latex "):
-            self.latex_input.default = original_code[6:]
-        else:
-            self.latex_input.default = original_code
+        self.latex_input.default = original_code
         self.dpi = dpi
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -529,8 +527,7 @@ async def help(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Help! - Commands and Features",
         description="Hello!, I'm LaTeX Bot. I can compile your LaTeX code in discord. \n"
-        "Use '/latex' to open a modal editor for your code "
-        "or type latex followed by latex code (server only)",
+        "Use '/latex' to open a modal editor for your code.",
         color=Color.orange(),
     )
     embed.set_author(name=name)
@@ -543,7 +540,6 @@ async def help(interaction: discord.Interaction):
         "/latex-inline                 Single-line slash command input\n\n"
         "/talk-to-me                   Talk to me\n\n"
         "/ping                         See if I'm awake!\n\n"
-        "latex {$$ latex code $$}      Without Slash Commands!\n\n"
         "```",
         inline=False,
     )
@@ -647,126 +643,6 @@ async def clear_history(interaction: discord.Interaction):
         command="clear-history",
         source="slash",
     )
-
-
-# ===== EVENTS =====
-@bot.event
-async def on_message(message):
-    if message.author == bot.user:
-        return
-    if message.content.startswith("latex"):
-        latex_code = message.content
-        channel = message.channel
-        message_id = str(message.id)
-        unique_id = message_id[7:14]
-
-        loop = asyncio.get_running_loop()
-
-        async def notify_legacy(embed, ephemeral=False):
-            return await channel.send(embed=embed, silent=True)
-
-        # Set a timeout of 15 seconds
-        try:
-            output, duration_ms = await compile_queue.execute(
-                loop, text_to_latex, latex_code, unique_id, 275,
-                notify_coro=notify_legacy, timeout=15.0, user_id=message.author.id, source="legacy", dpi=275
-            )
-            if output == "REJECTED":
-                return
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Legacy latex timeout author_id=%s request_id=%s",
-                message.author.id,
-                unique_id,
-            )
-            _safe_record_latex_event(
-                source="legacy",
-                status="timeout",
-                dpi=275,
-                user_id=message.author.id,
-                error_message="LaTeX compilation timed out",
-            )
-            # Handle the timeout case
-            embed = discord.Embed(
-                title="Timeout Error",
-                description="LaTeX compilation took too long. Please try again later or simplify your LaTeX code.",
-                color=Color.red(),
-            )
-            view = FixCodeView(latex_code, 275)
-            await channel.send(embed=embed, view=view, silent=True)
-            return
-        except Exception as exc:
-            logger.exception(
-                "Legacy latex internal error author_id=%s request_id=%s",
-                message.author.id,
-                unique_id,
-            )
-            _safe_record_latex_event(
-                source="legacy",
-                status="internal_error",
-                dpi=275,
-                user_id=message.author.id,
-                error_message=str(exc),
-            )
-            embed = discord.Embed(
-                title="Internal Error",
-                description="Unexpected compile error. Please try again in a moment.",
-                color=Color.red(),
-            )
-            view = FixCodeView(latex_code, 275)
-            await channel.send(embed=embed, view=view, silent=True)
-            return
-
-        if output is True:
-            logger.debug(
-                "Legacy latex compile success author_id=%s request_id=%s",
-                message.author.id,
-                unique_id,
-            )
-            _safe_record_latex_event(
-                source="legacy",
-                status="success",
-                dpi=275,
-                user_id=message.author.id,
-                duration_ms=duration_ms,
-            )
-            file = discord.File(f"{unique_id}.png", filename=f"{unique_id}.png")
-            embed = discord.Embed(color=Color.blue())
-            embed.set_image(url=f"attachment://{unique_id}.png")
-            await channel.send(embed=embed, file=file)
-            _log_command_success(
-                user_id=message.author.id,
-                command="latex",
-                source="legacy",
-                detail=f"request_id={unique_id}",
-            )
-            # remove extra files after
-            os.remove(f"{unique_id}.png")
-        else:
-            logger.warning(
-                "Legacy latex compile failed author_id=%s request_id=%s reason=%s",
-                message.author.id,
-                unique_id,
-                str(output),
-            )
-            _safe_record_latex_event(
-                source="legacy",
-                status="compile_error",
-                dpi=275,
-                user_id=message.author.id,
-                error_message=str(output),
-                duration_ms=duration_ms,
-            )
-            embed = discord.Embed(
-                title="Compilation Error",
-                description=_format_compile_error_description(str(output)),
-                color=Color.red(),
-            )
-            view = FixCodeView(latex_code, 275)
-            await channel.send(embed=embed, view=view, silent=True)
-            return
-    # must be used to process commands else they are overwritten by on_message
-    await bot.process_commands(message)
 
 if __name__ == "__main__":
     token = os.getenv("DISCORD_TOKEN")

@@ -170,9 +170,6 @@ def _install_bot_import_stubs() -> None:
         async def change_presence(self, *args, **kwargs):
             return None
 
-        async def process_commands(self, *args, **kwargs):
-            return None
-
         async def wait_until_ready(self):
             return None
 
@@ -269,6 +266,9 @@ class BotModalFlowTestCase(unittest.TestCase):
             self.bot.DISCORD_MODAL_LATEX_INPUT_CHARS,
         )
 
+    def test_bot_does_not_request_message_content_intent(self):
+        self.assertFalse(self.bot.intents.message_content)
+
     def test_format_compile_error_description_returns_plain_text_for_friendly_errors(self):
         message = "Input too long: Max is 3000 characters."
 
@@ -327,7 +327,7 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertIsInstance(modal, self.bot.LatexCodeModal)
         self.assertEqual(modal.title, "Fix LaTeX Code")
         self.assertEqual(modal.dpi, 350)
-        self.assertEqual(modal.latex_input.default, r"\alpha + \beta")
+        self.assertEqual(modal.latex_input.default, r"latex \alpha + \beta")
 
     def test_help_command_describes_modal_first_latex_flow(self):
         interaction = SimpleNamespace(
@@ -348,6 +348,8 @@ class BotModalFlowTestCase(unittest.TestCase):
             "/latex-inline                 Single-line slash command input",
             embed.fields[0]["value"],
         )
+        self.assertNotIn("Without Slash Commands", embed.fields[0]["value"])
+        self.assertNotIn("or type latex", embed.kwargs["description"])
 
     def test_collect_user_stats_includes_manual_users_value(self):
         self.bot.bot.guilds = [
