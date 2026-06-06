@@ -5,6 +5,11 @@
     A Discord bot that compiles LaTeX into PNG images so math, physics, and engineering conversations stay readable.
     It is built for study servers, class groups, and anyone who is tired of math getting lost in plain text.
   </p>
+  <p>
+    <a href="https://latex_bot.betteruptime.com">
+      <img src="https://img.shields.io/badge/service_status-view_status_page-0A84FF?style=flat-square" alt="View Discord LaTeX Bot service status" />
+    </a>
+  </p>
 </div>
 
 ## About the project
