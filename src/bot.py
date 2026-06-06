@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from google.generativeai.types.generation_types import StopCandidateException
 
 import time
+import aiohttp
 import discord
 import uuid
 from discord import app_commands, Color
@@ -128,6 +129,7 @@ METRICS_DB_PATH = os.getenv(
     "METRICS_DB_PATH",
     str(Path(__file__).resolve().parents[1] / "monitoring" / "data" / "metrics.db"),
 )
+_warned_missing_heartbeat_url = False
 
 
 def _safe_record_latex_event(
@@ -220,6 +222,48 @@ async def update_presence():
     await bot.change_presence(activity=activity)
     logger.info("Presence updated successfully")
 
+
+async def send_betterstack_heartbeat() -> bool:
+    global _warned_missing_heartbeat_url
+
+    heartbeat_url = os.getenv("BETTERSTACK_HEARTBEAT_URL", "").strip()
+    if not heartbeat_url:
+        if not _warned_missing_heartbeat_url:
+            logger.warning(
+                "Better Stack heartbeat skipped: "
+                "BETTERSTACK_HEARTBEAT_URL is not set"
+            )
+            _warned_missing_heartbeat_url = True
+        return False
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(heartbeat_url) as response:
+                if not 200 <= response.status < 300:
+                    logger.warning(
+                        "Better Stack heartbeat failed status=%s",
+                        response.status,
+                    )
+                    return False
+    except Exception:
+        logger.exception("Better Stack heartbeat request failed")
+        return False
+
+    logger.info("Better Stack heartbeat sent successfully")
+    return True
+
+
+@tasks.loop(minutes=5)
+async def betterstack_heartbeat_task():
+    await send_betterstack_heartbeat()
+
+
+@betterstack_heartbeat_task.before_loop
+async def before_betterstack_heartbeat_task():
+    await bot.wait_until_ready()
+
+
 # this is used for a sheild.io badge nothing else 
 def _collect_user_stats() -> dict[str, int]:
     guilds = list(bot.guilds)
@@ -277,6 +321,10 @@ async def on_ready():
     if not update_gist_stats_task.is_running():
         update_gist_stats_task.start()
         logger.info("Started hourly gist stats updater")
+
+    if not betterstack_heartbeat_task.is_running():
+        betterstack_heartbeat_task.start()
+        logger.info("Started Better Stack heartbeat task")
 
     # Debug Check
 
