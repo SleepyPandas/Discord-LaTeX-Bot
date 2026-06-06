@@ -133,7 +133,7 @@ _DVIPNG_FAST_PATH_BLOCKLIST = (
 
 
 def _matched_dvipng_block_pattern(expr: str) -> str | None:
-    stripped = _strip_legacy_latex_prefix(expr).strip()
+    stripped = expr.strip()
     for pattern in _DVIPNG_FAST_PATH_BLOCKLIST:
         if re.search(pattern, stripped):
             return pattern
@@ -475,8 +475,8 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
      dpi=(1000 , optional) int | sets resolution
     """
 
-    expr = _strip_legacy_latex_prefix(expr)
-
+    # Interaction input is LaTeX source, not a message command. Keep it intact
+    # so command-like text is validated and rendered consistently.
     if len(expr) > MAX_LATEX_INPUT_CHARS:
         return (
             f"Input too long: {len(expr)} characters. "
@@ -598,7 +598,7 @@ def _needs_standalone_document_shell(expr: str) -> bool:
     True when input is not already a full document but needs a standalone file shell
     (TikZ / pgfplots fragments, raw TikZ commands, or leading preamble-only imports).
     """
-    stripped = _strip_legacy_latex_prefix(expr).strip()
+    stripped = expr.strip()
     if not stripped:
         return False
     if _is_full_document(stripped):
@@ -613,7 +613,7 @@ def _needs_standalone_document_shell(expr: str) -> bool:
 
 
 def _is_dvipng_fast_path_eligible(expr: str) -> bool:
-    stripped = _strip_legacy_latex_prefix(expr).strip()
+    stripped = expr.strip()
     if not stripped or _is_full_document(stripped):
         return False
 
@@ -621,12 +621,12 @@ def _is_dvipng_fast_path_eligible(expr: str) -> bool:
 
 
 def _structured_document_kind(expr: str) -> str:
-    stripped = _strip_legacy_latex_prefix(expr).strip()
+    stripped = expr.strip()
     return "TikZ document" if _content_suggests_tikz(stripped) else "LaTeX document"
 
 
 def _detect_truncated_complex_input_error(expr: str, log_text: str) -> str:
-    stripped = _strip_legacy_latex_prefix(expr).strip()
+    stripped = expr.strip()
     if len(stripped) != MAX_LATEX_INPUT_CHARS:
         return ""
     if not (_is_full_document(stripped) or _needs_standalone_document_shell(stripped)):
@@ -676,7 +676,7 @@ def _render_png_request(
 
 
 def _prepare_render_request(expr: str, dpi: int) -> RenderRequest:
-    stripped = _strip_legacy_latex_prefix(expr).strip()
+    stripped = expr.strip()
     preflight_issue = _run_preflight_checks(stripped)
     if (
         preflight_issue
@@ -751,7 +751,7 @@ def _maybe_wrap_raw_tikz_body_with_line_map(
 
 
 def _normalize_full_document_with_line_map(expr: str) -> tuple[str, dict[int, int]]:
-    latex_code = _strip_legacy_latex_prefix(expr).strip()
+    latex_code = expr.strip()
 
     if r"\documentclass" in latex_code:
         return _normalize_first_documentclass_if_needed(latex_code), _identity_line_map(latex_code)
@@ -1073,10 +1073,9 @@ def remove_superfluous(expr: str) -> str:
     """
 
     # Remove any comments
-    # Remove any latex str
     # Replace  \fill[blue] with \draw[fill=blue]
 
-    expr = _strip_legacy_latex_prefix(expr).strip()
+    expr = expr.strip()
 
     if r'\maketitle' in expr or r'\author' in expr or r'\title' in expr:
         expr = expr.replace(r'\maketitle', "")
@@ -1159,13 +1158,6 @@ def _wrap_display_math_batch(blocks: list[str]) -> str:
 
 def _wrap_display_math_content(content: str) -> str:
     return "$\\displaystyle " + content.strip() + "$"
-
-
-def _strip_legacy_latex_prefix(expr: str) -> str:
-    stripped = expr.lstrip()
-    if not re.match(r"latex(?:\s+|$)", stripped):
-        return expr
-    return re.sub(r"^latex(?:\s+|$)", "", stripped, count=1).lstrip()
 
 
 def _has_explicit_math_delimiters(expr: str) -> bool:

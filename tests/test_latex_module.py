@@ -357,30 +357,15 @@ class LatexModuleTestCase(unittest.TestCase):
             "Input too long: 3001 characters. Max is 3000 characters.",
         )
 
-    def test_text_to_latex_ignores_legacy_prefix_when_counting_input_chars(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output_base = str(Path(temp_dir) / "legacy_limit")
-            with patch.object(
-                latex_module,
-                "_render_png_request",
-                return_value=PNG_SIGNATURE,
-            ):
-                result = latex_module.text_to_latex(
-                    "latex " + ("x" * latex_module.MAX_LATEX_INPUT_CHARS),
-                    output_base,
-                )
-
-        self.assertTrue(result)
-
-    def test_text_to_latex_rejects_legacy_prefix_input_over_3000_chars(self):
+    def test_text_to_latex_counts_literal_latex_prefix_toward_input_limit(self):
         result = latex_module.text_to_latex(
-            "latex " + ("x" * (latex_module.MAX_LATEX_INPUT_CHARS + 1)),
+            "latex " + ("x" * latex_module.MAX_LATEX_INPUT_CHARS),
             "unused_output",
         )
 
         self.assertEqual(
             result,
-            "Input too long: 3001 characters. Max is 3000 characters.",
+            "Input too long: 3006 characters. Max is 3000 characters.",
         )
 
     def test_text_to_latex_surfaces_truncated_tikz_documents_as_length_errors(self):
@@ -465,10 +450,10 @@ class LatexModuleTestCase(unittest.TestCase):
             "\\end{gathered}$",
         )
 
-    def test_remove_superfluous_strips_legacy_prefix_before_wrapping(self):
+    def test_remove_superfluous_treats_latex_prefix_as_literal_input(self):
         result = latex_module.remove_superfluous(r"latex \alpha + \beta")
 
-        self.assertEqual(result, r"$\displaystyle \alpha + \beta$")
+        self.assertEqual(result, r"$\displaystyle latex \alpha + \beta$")
 
     def test_normalize_full_document_adds_standalone_class_when_missing(self):
         result = latex_module._normalize_full_document(r"\begin{document}x\end{document}")
