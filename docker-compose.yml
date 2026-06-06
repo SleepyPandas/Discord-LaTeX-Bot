@@ -13,6 +13,8 @@ services:
       METRICS_DB_PATH: /data/metrics.db
       TMPDIR: ${TMPDIR:-/tmp/latex-bot}
     working_dir: /app
+    ports:
+      - "127.0.0.1:8082:8082"
     tmpfs:
       - /tmp/latex-bot:rw,noexec,nosuid,nodev,size=${LATEX_TMPFS_SIZE:-256m},mode=1777
     volumes:
