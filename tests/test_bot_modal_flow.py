@@ -251,6 +251,9 @@ class BotModalFlowTestCase(unittest.TestCase):
     def tearDownClass(cls):
         cls.bot.executor.shutdown(wait=False, cancel_futures=True)
 
+    def setUp(self):
+        self.bot._warned_missing_heartbeat_url = False
+
     def test_latex_command_opens_entry_modal_with_default_dpi(self):
         interaction = SimpleNamespace(response=SimpleNamespace(send_modal=AsyncMock()))
 
@@ -374,21 +377,135 @@ class BotModalFlowTestCase(unittest.TestCase):
             },
         )
 
-    def test_on_ready_starts_hourly_task_once(self):
+    def test_on_ready_starts_background_tasks_once(self):
         sync_mock = AsyncMock(return_value=[])
         update_presence_mock = AsyncMock()
-        task_mock = SimpleNamespace(
+        gist_task_mock = SimpleNamespace(
+            is_running=Mock(side_effect=[False, True]),
+            start=Mock(),
+        )
+        heartbeat_task_mock = SimpleNamespace(
             is_running=Mock(side_effect=[False, True]),
             start=Mock(),
         )
 
         with patch.object(self.bot.bot.tree, "sync", sync_mock), patch.object(
             self.bot, "update_presence", update_presence_mock
-        ), patch.object(self.bot, "update_gist_stats_task", task_mock):
+        ), patch.object(
+            self.bot, "update_gist_stats_task", gist_task_mock
+        ), patch.object(
+            self.bot, "betterstack_heartbeat_task", heartbeat_task_mock
+        ):
             asyncio.run(self.bot.on_ready())
             asyncio.run(self.bot.on_ready())
 
-        task_mock.start.assert_called_once()
+        gist_task_mock.start.assert_called_once()
+        heartbeat_task_mock.start.assert_called_once()
+
+    def test_betterstack_heartbeat_sends_configured_request(self):
+        class FakeResponse:
+            status = 200
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeSession:
+            def __init__(self):
+                self.get_calls = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            def get(self, url):
+                self.get_calls.append(url)
+                return FakeResponse()
+
+        fake_session = FakeSession()
+        heartbeat_url = "https://uptime.betterstack.com/api/v1/heartbeat/test-token"
+
+        with patch.dict(
+            os.environ,
+            {"BETTERSTACK_HEARTBEAT_URL": heartbeat_url},
+            clear=False,
+        ), patch.object(
+            self.bot.aiohttp,
+            "ClientSession",
+            return_value=fake_session,
+        ):
+            result = asyncio.run(self.bot.send_betterstack_heartbeat())
+
+        self.assertTrue(result)
+        self.assertEqual(fake_session.get_calls, [heartbeat_url])
+
+    def test_betterstack_heartbeat_skips_missing_configuration(self):
+        with patch.dict(
+            os.environ,
+            {"BETTERSTACK_HEARTBEAT_URL": ""},
+            clear=False,
+        ), patch.object(self.bot.aiohttp, "ClientSession") as session_mock:
+            with self.assertLogs(self.bot.logger, level="WARNING") as logs:
+                result = asyncio.run(self.bot.send_betterstack_heartbeat())
+
+        self.assertFalse(result)
+        session_mock.assert_not_called()
+        self.assertIn("BETTERSTACK_HEARTBEAT_URL is not set", logs.output[0])
+
+    def test_betterstack_heartbeat_handles_http_failure(self):
+        class FakeResponse:
+            status = 503
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeSession:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            def get(self, url):
+                return FakeResponse()
+
+        with patch.dict(
+            os.environ,
+            {"BETTERSTACK_HEARTBEAT_URL": "https://example.invalid/heartbeat"},
+            clear=False,
+        ), patch.object(
+            self.bot.aiohttp,
+            "ClientSession",
+            return_value=FakeSession(),
+        ):
+            with self.assertLogs(self.bot.logger, level="WARNING") as logs:
+                result = asyncio.run(self.bot.send_betterstack_heartbeat())
+
+        self.assertFalse(result)
+        self.assertIn("status=503", logs.output[0])
+
+    def test_betterstack_heartbeat_handles_network_failure(self):
+        with patch.dict(
+            os.environ,
+            {"BETTERSTACK_HEARTBEAT_URL": "https://example.invalid/heartbeat"},
+            clear=False,
+        ), patch.object(
+            self.bot.aiohttp,
+            "ClientSession",
+            side_effect=RuntimeError("network unavailable"),
+        ):
+            with self.assertLogs(self.bot.logger, level="ERROR") as logs:
+                result = asyncio.run(self.bot.send_betterstack_heartbeat())
+
+        self.assertFalse(result)
+        self.assertIn("Better Stack heartbeat request failed", logs.output[0])
 
     def test_bot_defaults_compile_concurrency_for_local_renderer(self):
         bot_module = _import_bot_module(
