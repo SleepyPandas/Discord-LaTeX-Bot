@@ -7,8 +7,10 @@
   </p>
   <p>
     <a href="https://latex_bot.betteruptime.com">
-      <img src="https://img.shields.io/badge/service_status-view_status_page-0A84FF?style=flat-square" alt="View Discord LaTeX Bot service status" />
+      <img src="https://uptime.betterstack.com/status-badges/v1/monitor/2ofhm.svg" alt="Better Stack service status" />
     </a>
+    <br />
+    <a href="https://latex_bot.betteruptime.com">View service status and incident history</a>
   </p>
 </div>
 
