@@ -319,7 +319,7 @@ async def send_betterstack_heartbeat() -> bool:
     return True
 
 
-@tasks.loop(minutes=5)
+@tasks.loop(minutes=2)
 async def betterstack_heartbeat_task():
     await send_betterstack_heartbeat()
 
