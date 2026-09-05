@@ -573,22 +573,58 @@
       }).join("");
     }
 
+    function toggleErrorCell(event, cellEl) {
+      if (!cellEl) return;
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) return;
+      cellEl.classList.toggle("is-expanded");
+    }
+
     function renderEvents(events) {
       if (!Array.isArray(events) || events.length === 0) {
         eventsBodyEl.innerHTML = '<tr><td colspan="6" class="empty">No events recorded yet.</td></tr>';
         return;
       }
 
-      eventsBodyEl.innerHTML = events.map((event) => `
-        <tr>
-          <td>${escapeHtml(formatEventDateTime(event.created_at))}</td>
-          <td>${escapeHtml(event.source)}</td>
-          <td>${badge(event.status)}</td>
-          <td>${escapeHtml(event.dpi)}</td>
-          <td>${escapeHtml(event.user_id)}</td>
-          <td class="error-cell">${escapeHtml(event.error_message)}</td>
-        </tr>
-      `).join("");
+      eventsBodyEl.innerHTML = events.map((event) => {
+        const hasError = Boolean(event.error_message);
+        const hasCode = Boolean(event.latex_code);
+        const isExpandable = hasError || hasCode;
+
+        let errorHtml = '<span class="empty">-</span>';
+        if (isExpandable) {
+          const displaySummary = event.error_message || (hasCode ? "Submitted LaTeX" : "Error");
+          errorHtml = `
+            <div class="error-cell-inner">
+              <div class="error-summary">
+                <span class="expand-toggle-icon">▶</span>
+                <span class="error-summary-text" title="${escapeHtml(displaySummary)}">${escapeHtml(displaySummary)}</span>
+                ${hasCode ? '<span class="code-indicator-pill" title="Contains LaTeX input">LaTeX</span>' : ''}
+              </div>
+              <div class="error-detail-content">
+                ${hasError ? `<div class="error-full-msg">${escapeHtml(event.error_message)}</div>` : ''}
+                ${hasCode ? `
+                  <div class="error-code-header">Submitted LaTeX:</div>
+                  <pre class="error-code-pre"><code>${escapeHtml(event.latex_code)}</code></pre>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <tr>
+            <td>${escapeHtml(formatEventDateTime(event.created_at))}</td>
+            <td>${escapeHtml(event.source)}</td>
+            <td>${badge(event.status)}</td>
+            <td>${escapeHtml(event.dpi)}</td>
+            <td>${escapeHtml(event.user_id)}</td>
+            <td class="error-cell ${isExpandable ? 'is-expandable' : ''}" ${isExpandable ? 'onclick="toggleErrorCell(event, this)" title="Click to expand/collapse"' : ''}>
+              ${errorHtml}
+            </td>
+          </tr>
+        `;
+      }).join("");
     }
 
     async function loadSummary(windowKey) {
