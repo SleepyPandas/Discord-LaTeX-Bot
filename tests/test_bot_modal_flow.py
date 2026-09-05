@@ -347,6 +347,59 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertEqual(modal.dpi, 350)
         self.assertEqual(modal.latex_input.default, r"latex \alpha + \beta")
 
+    def test_handle_latex_compilation_records_latex_code_on_failure(self):
+        interaction = SimpleNamespace(
+            response=SimpleNamespace(is_done=lambda: True, defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()),
+            user=SimpleNamespace(id=999),
+        )
+        with patch.object(
+            self.bot.compile_queue,
+            "execute",
+            new=AsyncMock(return_value=("LaTeX syntax error: syntax issue", 50)),
+        ), patch.object(self.bot, "_safe_record_latex_event") as mock_record:
+            asyncio.run(
+                self.bot.handle_latex_compilation(
+                    interaction, r"\undefined_command", 300, source="modal"
+                )
+            )
+
+        mock_record.assert_called_once_with(
+            source="modal",
+            status="compile_error",
+            dpi=300,
+            user_id=999,
+            error_message="LaTeX syntax error: syntax issue",
+            duration_ms=50,
+            latex_code=r"\undefined_command",
+        )
+
+    def test_handle_latex_compilation_records_latex_code_on_timeout(self):
+        interaction = SimpleNamespace(
+            response=SimpleNamespace(is_done=lambda: True, defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()),
+            user=SimpleNamespace(id=888),
+        )
+        with patch.object(
+            self.bot.compile_queue,
+            "execute",
+            new=AsyncMock(side_effect=asyncio.TimeoutError()),
+        ), patch.object(self.bot, "_safe_record_latex_event") as mock_record:
+            asyncio.run(
+                self.bot.handle_latex_compilation(
+                    interaction, r"\huge \int", 300, source="modal"
+                )
+            )
+
+        mock_record.assert_called_once_with(
+            source="modal",
+            status="timeout",
+            dpi=300,
+            user_id=888,
+            error_message="LaTeX compilation timed out",
+            latex_code=r"\huge \int",
+        )
+
     def test_help_command_describes_modal_first_latex_flow(self):
         interaction = SimpleNamespace(
             user=SimpleNamespace(id=123),

@@ -138,6 +138,55 @@ class MetricsStoreTestCase(unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(duration, 1234)
         self.assertIn("duration_ms", columns)
+        self.assertIn("latex_code", columns)
+
+    def test_record_latex_event_persists_latex_code_and_truncates(self):
+        metrics_store.init_metrics_db(self.db_path)
+        long_code = "\\alpha + \\beta " * 400  # 6000 chars > 4000 max
+        metrics_store.record_latex_event(
+            db_path=self.db_path,
+            source="modal",
+            status="compile_error",
+            dpi=300,
+            user_id=2002,
+            error_message="Undefined control sequence",
+            duration_ms=45,
+            latex_code=long_code,
+        )
+
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute("SELECT error_message, latex_code FROM latex_events LIMIT 1;").fetchone()
+
+        self.assertEqual(row[0], "Undefined control sequence")
+        self.assertEqual(len(row[1]), 4000)
+        self.assertTrue(row[1].startswith("\\alpha + \\beta"))
+
+    def test_init_migrates_existing_database_missing_latex_code(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE latex_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    dpi INTEGER,
+                    user_id TEXT,
+                    error_message TEXT,
+                    duration_ms INTEGER
+                );
+                """
+            )
+            conn.commit()
+
+        metrics_store.init_metrics_db(self.db_path)
+
+        with sqlite3.connect(self.db_path) as conn:
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(latex_events);").fetchall()
+            }
+        self.assertIn("latex_code", columns)
 
 
 if __name__ == "__main__":
