@@ -151,7 +151,8 @@ def init_metrics_db(db_path: str) -> None:
                 dpi INTEGER,
                 user_id TEXT,
                 error_message TEXT,
-                duration_ms INTEGER
+                duration_ms INTEGER,
+                latex_code TEXT
             );
             """
         )
@@ -161,6 +162,8 @@ def init_metrics_db(db_path: str) -> None:
         }
         if "duration_ms" not in existing_columns:
             conn.execute("ALTER TABLE latex_events ADD COLUMN duration_ms INTEGER;")
+        if "latex_code" not in existing_columns:
+            conn.execute("ALTER TABLE latex_events ADD COLUMN latex_code TEXT;")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_latex_events_created_at ON latex_events(created_at);"
         )
@@ -192,6 +195,7 @@ def record_latex_event(
     user_id: int | None,
     error_message: str | None = None,
     duration_ms: int | None = None,
+    latex_code: str | None = None,
 ) -> None:
     if status not in _VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}'")
@@ -200,11 +204,15 @@ def record_latex_event(
     if duration_ms is not None:
         normalized_duration_ms = max(0, int(duration_ms))
 
+    normalized_latex_code: str | None = None
+    if latex_code is not None:
+        normalized_latex_code = (latex_code or "")[:4000] or None
+
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message, duration_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?);
+            INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message, duration_ms, latex_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 _utc_now_iso(),
@@ -214,6 +222,7 @@ def record_latex_event(
                 str(user_id) if user_id is not None else None,
                 (error_message or "")[:500] or None,
                 normalized_duration_ms,
+                normalized_latex_code,
             ),
         )
         conn.commit()
