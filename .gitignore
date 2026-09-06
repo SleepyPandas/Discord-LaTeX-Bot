@@ -228,3 +228,6 @@ Thoughts.md
 test_out.txt
 .cursor
 pyrefly.toml
+.vscode/launch.json
+run.bat
+src/run.py
