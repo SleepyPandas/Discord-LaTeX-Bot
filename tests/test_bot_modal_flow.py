@@ -55,9 +55,15 @@ def _install_bot_import_stubs() -> None:
     class DummyView:
         def __init__(self, *, timeout=None):
             self.timeout = timeout
+            self.children = []
+
+        def add_item(self, item):
+            self.children.append(item)
+            return self
 
     class DummyButtonStyle:
         danger = "danger"
+        link = "link"
 
     class DummyTextStyle:
         long = "long"
@@ -117,6 +123,11 @@ def _install_bot_import_stubs() -> None:
             return self
 
     class DummyFile:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class DummyButton:
         def __init__(self, *args, **kwargs):
             self.args = args
             self.kwargs = kwargs
@@ -198,7 +209,7 @@ def _install_bot_import_stubs() -> None:
         View=DummyView,
         TextInput=DummyTextInput,
         button=dummy_button,
-        Button=object,
+        Button=DummyButton,
     )
 
     discord_module.ui = ui_module
@@ -400,7 +411,7 @@ class BotModalFlowTestCase(unittest.TestCase):
             latex_code=r"\huge \int",
         )
 
-    def test_help_command_describes_modal_first_latex_flow(self):
+    def test_help_command_sends_embed_and_link_buttons(self):
         interaction = SimpleNamespace(
             user=SimpleNamespace(id=123),
             response=SimpleNamespace(send_message=AsyncMock()),
@@ -410,17 +421,23 @@ class BotModalFlowTestCase(unittest.TestCase):
 
         interaction.response.send_message.assert_awaited_once()
         embed = interaction.response.send_message.await_args.kwargs["embed"]
-        self.assertIn("open a modal editor", embed.kwargs["description"])
-        self.assertIn(
-            "/latex                        Open the LaTeX editor modal",
-            embed.fields[0]["value"],
+        view = interaction.response.send_message.await_args.kwargs["view"]
+
+        self.assertIsNotNone(embed)
+        self.assertIsInstance(view, self.bot.HelpLinksView)
+        self.assertEqual(len(view.children), 3)
+        self.assertEqual(
+            view.children[0].kwargs.get("url"),
+            "https://github.com/SleepyPandas/Discord-LaTeX-Bot/releases",
         )
-        self.assertIn(
-            "/latex-inline                 Single-line slash command input",
-            embed.fields[0]["value"],
+        self.assertEqual(
+            view.children[1].kwargs.get("url"),
+            "https://forms.gle/xzb9CkBjkZqHy95C6",
         )
-        self.assertNotIn("Without Slash Commands", embed.fields[0]["value"])
-        self.assertNotIn("or type latex", embed.kwargs["description"])
+        self.assertEqual(
+            view.children[2].kwargs.get("url"),
+            "https://github.com/SleepyPandas/Discord-LaTeX-Bot",
+        )
 
     def test_collect_user_stats_includes_manual_users_value(self):
         self.bot.bot.guilds = [
