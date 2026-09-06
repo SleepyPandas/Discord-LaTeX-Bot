@@ -13,6 +13,8 @@ import uuid
 from aiohttp import web
 from discord import app_commands, Color
 
+__version__ = "2.4.2"
+
 
 def _read_int_env(
     name: str,
@@ -615,42 +617,91 @@ async def latex_inline(interaction: discord.Interaction, latex_code: str):
     )
 
 
+class HelpLinksView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(
+            discord.ui.Button(
+                label="Releases & Changelog",
+                url="https://github.com/SleepyPandas/Discord-LaTeX-Bot/releases",
+                style=discord.ButtonStyle.link,
+                emoji="🚀",
+            )
+        )
+        self.add_item(
+            discord.ui.Button(
+                label="Feedback & Requests",
+                url="https://forms.gle/xzb9CkBjkZqHy95C6",
+                style=discord.ButtonStyle.link,
+                emoji="💬",
+            )
+        )
+        self.add_item(
+            discord.ui.Button(
+                label="GitHub",
+                url="https://github.com/SleepyPandas/Discord-LaTeX-Bot",
+                style=discord.ButtonStyle.link,
+                emoji="⭐",
+            )
+        )
+
+
 @bot.tree.command(name="help", description="See Features and Commands")
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def help(interaction: discord.Interaction):
-    name = "LaTeX_Bot"
-
     embed = discord.Embed(
         title="Help! - Commands and Features",
-        description="Hello!, I'm LaTeX Bot. I can compile your LaTeX code in discord. \n"
+        description="Hello! I can compile and render your LaTeX code in Discord.\n"
         "Use '/latex' to open a modal editor for your code.",
         color=Color.orange(),
     )
-    embed.set_author(name=name)
+    embed.set_author(
+        name="LaTeX_Bot • by SleepyPandas",
+        url="https://github.com/SleepyPandas",
+    )
 
     embed.add_field(
         name="Commands",
-        value="```"
-        "/help                         To well get help\n\n"
-        "/latex                        Open the LaTeX editor modal\n\n"
-        "/latex-inline                 Single-line slash command input\n\n"
+        value="```\n"
+        "/help                         help and info guide\n\n"
+        "/latex                        LaTeX editor modal\n\n"
+        "/latex-inline                 Single-line slash LaTeX\n\n"
         "/talk-to-me                   Talk to me\n\n"
-        "/ping                         See if I'm awake!\n\n"
+        "/ping                         See if I'm awake!\n"
         "```",
         inline=False,
     )
 
     embed.add_field(
         name="Tips",
-        value=r"""To get a past message press up arrow on your keyboard ↑. 
-                                       A preamble is only needed if using a Tikz package otherwise 
-                                       a basic structure is added by default. Missing math delimiters 
-                                       are auto-added as \\[...\\] when needed.""",
+        value=(
+            "• There will be an attemped auto-wrap for missing delimiters.\n"
+            "• Press the up arrow key (↑) in chat to recall a previous message.\n"
+            "• A preamble is only needed for TikZ or specialized packages; "
+            "standard math packages are loaded by default."
+        ),
+        inline=False,
     )
-    embed.set_footer(text=f"created by {name}")
+
+    embed.add_field(
+        name="Coming Soon & Requests",
+        value=(
+            "Active updates are in progress! Upcoming releases will add more LaTeX packages, "
+            "expanded display math environments (like align*) and more!\n\n"
+            "Have a package request or feature idea? Click Feedback & Requests below!"
+        ),
+        inline=False,
+    )
+
+    embed.set_footer(text=f"v{__version__} • Created by SleepyPandas")
     # noinspection PyUnresolvedReferences
-    await interaction.response.send_message(embed=embed, ephemeral=False, silent=True)
+    await interaction.response.send_message(
+        embed=embed,
+        view=HelpLinksView(),
+        ephemeral=False,
+        silent=True,
+    )
     _log_command_success(user_id=interaction.user.id, command="help", source="slash")
 
 

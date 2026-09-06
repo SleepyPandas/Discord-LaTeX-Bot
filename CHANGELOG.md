@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## [V2.4.2] [Help Command Version Display & Links] - 2026-09-06
+
+### Highlights
+
+- Added interactive link buttons directly to the `/help` command embed, providing quick navigation to Releases & Changelog, Feedback & Requests, and the GitHub repository.
+- Added dynamic bot version display in the `/help` embed footer (`v2.4.2 • Created by SleepyPandas`).
+- Added automated test coverage for `/help` command components and view buttons.
+
+### Added
+
+- `__version__` constant in `src/bot.py`.
+- Discord UI `View` with link buttons attached to `/help` response.
+- Automated tests verifying `/help` embed footer and button components in `tests/test_bot_modal_flow.py`.
+
+### Changed
+
+- `src/bot.py`: Updated `/help` slash command to display current version in the embed footer and attach interactive link buttons.
+
+---
+
 ## [Additional Internal Error Logging & Error UX] - 2026-09-05
 
 ### Highlights
