@@ -120,6 +120,7 @@ def _install_bot_import_stubs() -> None:
             return self
 
         def set_footer(self, **kwargs):
+            self.footer_kwargs = kwargs
             return self
 
     class DummyFile:
@@ -437,6 +438,10 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.assertEqual(
             view.children[2].kwargs.get("url"),
             "https://github.com/SleepyPandas/Discord-LaTeX-Bot",
+        )
+        self.assertEqual(
+            embed.footer_kwargs.get("text"),
+            f"v{self.bot.__version__} • Created by SleepyPandas",
         )
 
     def test_collect_user_stats_includes_manual_users_value(self):

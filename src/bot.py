@@ -13,6 +13,8 @@ import uuid
 from aiohttp import web
 from discord import app_commands, Color
 
+__version__ = "2.4.1"
+
 
 def _read_int_env(
     name: str,
@@ -692,7 +694,7 @@ async def help(interaction: discord.Interaction):
         inline=False,
     )
 
-    embed.set_footer(text="Created by SleepyPandas")
+    embed.set_footer(text=f"v{__version__} • Created by SleepyPandas")
     # noinspection PyUnresolvedReferences
     await interaction.response.send_message(
         embed=embed,
