@@ -155,6 +155,7 @@ def _safe_record_latex_event(
     user_id: int | None,
     error_message: str | None = None,
     duration_ms: int | None = None,
+    latex_code: str | None = None,
 ) -> None:
     try:
         record_latex_event(
@@ -165,6 +166,7 @@ def _safe_record_latex_event(
             user_id=user_id,
             error_message=error_message,
             duration_ms=duration_ms,
+            latex_code=latex_code,
         )
     except Exception:
         logger.exception(
@@ -494,6 +496,7 @@ async def handle_latex_compilation(
             dpi=dpi,
             user_id=interaction.user.id,
             error_message="LaTeX compilation timed out",
+            latex_code=latex_code,
         )
         embed = discord.Embed(
             title="Timeout Error",
@@ -516,6 +519,7 @@ async def handle_latex_compilation(
             dpi=dpi,
             user_id=interaction.user.id,
             error_message=str(exc),
+            latex_code=latex_code,
         )
         embed = discord.Embed(
             title="Internal Error",
@@ -552,10 +556,11 @@ async def handle_latex_compilation(
         os.remove(f"{unique_id}.png")
     else:
         logger.warning(
-            "LaTeX compile failed user_id=%s request_id=%s reason=%s",
+            "LaTeX compile failed user_id=%s request_id=%s reason=%s input=%r",
             interaction.user.id,
             unique_id,
             str(output),
+            (latex_code or "")[:200],
         )
         _safe_record_latex_event(
             source=source,
@@ -564,6 +569,7 @@ async def handle_latex_compilation(
             user_id=interaction.user.id,
             error_message=str(output),
             duration_ms=duration_ms,
+            latex_code=latex_code,
         )
         embed = discord.Embed(
             title="Compilation Error",

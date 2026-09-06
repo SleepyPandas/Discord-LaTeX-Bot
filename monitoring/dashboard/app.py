@@ -37,7 +37,12 @@ LOGGER = logging.getLogger(__name__)
 
 def get_metrics_db_path() -> str:
     """Resolve metrics database location from environment."""
-    return os.getenv("METRICS_DB_PATH", "/data/metrics.db")
+    if "METRICS_DB_PATH" in os.environ:
+        return os.environ["METRICS_DB_PATH"]
+    local_db = REPO_ROOT / "monitoring" / "data" / "metrics.db"
+    if local_db.parent.exists():
+        return str(local_db)
+    return "/data/metrics.db"
 
 
 def get_dashboard_username() -> str:
@@ -676,9 +681,12 @@ def _query_events(db_path: str, limit: int) -> list[dict]:
     try:
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(latex_events);").fetchall()}
+            has_latex_code = "latex_code" in cols
+            select_latex_code = ", latex_code" if has_latex_code else ""
             rows = conn.execute(
-                """
-                SELECT id, created_at, source, status, dpi, user_id, error_message
+                f"""
+                SELECT id, created_at, source, status, dpi, user_id, error_message{select_latex_code}
                 FROM latex_events
                 ORDER BY id DESC
                 LIMIT ?;
@@ -700,6 +708,7 @@ def _query_events(db_path: str, limit: int) -> list[dict]:
                 "dpi": row["dpi"],
                 "user_id": row["user_id"],
                 "error_message": row["error_message"],
+                "latex_code": row["latex_code"] if has_latex_code else None,
             }
         )
     return events
@@ -712,9 +721,12 @@ def _query_all_events(db_path: str) -> list[dict]:
     try:
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(latex_events);").fetchall()}
+            has_latex_code = "latex_code" in cols
+            select_latex_code = ", latex_code" if has_latex_code else ""
             rows = conn.execute(
-                """
-                SELECT id, created_at, source, status, dpi, user_id, error_message
+                f"""
+                SELECT id, created_at, source, status, dpi, user_id, error_message{select_latex_code}
                 FROM latex_events
                 ORDER BY id DESC;
                 """
@@ -734,6 +746,7 @@ def _query_all_events(db_path: str) -> list[dict]:
                 "dpi": row["dpi"],
                 "user_id": row["user_id"],
                 "error_message": row["error_message"],
+                "latex_code": row["latex_code"] if has_latex_code else None,
             }
         )
     return events
@@ -742,7 +755,7 @@ def _query_all_events(db_path: str) -> list[dict]:
 def _events_to_csv(events: list[dict]) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["id", "created_at", "source", "status", "dpi", "user_id", "error_message"])
+    writer.writerow(["id", "created_at", "source", "status", "dpi", "user_id", "error_message", "latex_code"])
     for event in events:
         writer.writerow(
             [
@@ -753,6 +766,7 @@ def _events_to_csv(events: list[dict]) -> str:
                 event.get("dpi"),
                 event.get("user_id"),
                 event.get("error_message"),
+                event.get("latex_code"),
             ]
         )
     return buffer.getvalue()

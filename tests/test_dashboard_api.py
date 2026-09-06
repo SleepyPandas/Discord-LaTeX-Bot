@@ -42,7 +42,8 @@ class DashboardApiTestCase(unittest.TestCase):
                     dpi INTEGER,
                     user_id TEXT,
                     error_message TEXT,
-                    duration_ms INTEGER
+                    duration_ms INTEGER,
+                    latex_code TEXT
                 );
                 """
             )
@@ -50,13 +51,22 @@ class DashboardApiTestCase(unittest.TestCase):
 
     def _insert_rows(self, rows: list[tuple]) -> None:
         with sqlite3.connect(self.db_path) as conn:
-            conn.executemany(
-                """
-                INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message, duration_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?);
-                """,
-                rows,
-            )
+            if rows and len(rows[0]) == 8:
+                conn.executemany(
+                    """
+                    INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message, duration_ms, latex_code)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    rows,
+                )
+            else:
+                conn.executemany(
+                    """
+                    INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message, duration_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    rows,
+                )
             conn.commit()
 
     def test_parse_window_key_defaults_to_90d_for_invalid_or_missing(self):
@@ -167,6 +177,7 @@ class DashboardApiTestCase(unittest.TestCase):
                 "dpi": 300,
                 "user_id": "123",
                 "error_message": "bad latex",
+                "latex_code": r"\bad \latex",
             },
             {
                 "id": 1,
@@ -176,6 +187,7 @@ class DashboardApiTestCase(unittest.TestCase):
                 "dpi": 275,
                 "user_id": "456",
                 "error_message": None,
+                "latex_code": None,
             },
         ]
 
@@ -185,12 +197,31 @@ class DashboardApiTestCase(unittest.TestCase):
         rows = list(reader)
         self.assertEqual(
             rows[0],
-            ["id", "created_at", "source", "status", "dpi", "user_id", "error_message"],
+            ["id", "created_at", "source", "status", "dpi", "user_id", "error_message", "latex_code"],
         )
         self.assertEqual(rows[1][0], "2")
         self.assertEqual(rows[1][2], "legacy")
+        self.assertEqual(rows[1][7], r"\bad \latex")
         self.assertEqual(rows[2][0], "1")
         self.assertEqual(rows[2][3], "success")
+        self.assertEqual(rows[2][7], "")
+
+    def test_query_events_and_all_events_include_latex_code(self):
+        rows = [
+            (_iso_hours_ago(2), "slash", "success", 275, "11", None, 95, None),
+            (_iso_hours_ago(1), "modal", "compile_error", 300, "10", "syntax error", 120, r"\frac{1}"),
+        ]
+        self._insert_rows(rows)
+
+        recent = dashboard_app._query_events(self.db_path, limit=10)
+        self.assertEqual(len(recent), 2)
+        self.assertEqual(recent[0]["latex_code"], r"\frac{1}")
+        self.assertIsNone(recent[1]["latex_code"])
+
+        all_events = dashboard_app._query_all_events(self.db_path)
+        self.assertEqual(len(all_events), 2)
+        self.assertEqual(all_events[0]["latex_code"], r"\frac{1}")
+        self.assertIsNone(all_events[1]["latex_code"])
 
     def test_format_uptime_human_readable(self):
         self.assertEqual(dashboard_app._format_uptime(45), "45s")

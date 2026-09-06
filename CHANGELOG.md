@@ -2,9 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
-## #1 [Dashboard and Usage Logging] - 2026-02-15
+## [Additional Internal Error Logging & Error UX] - 2026-09-05
 
-Release candidate for branch `Feature/Dashboard-and-Useage-logging` (`18` commits ahead of `main`).
+### Highlights
+
+- Added database recording of failing LaTeX code specifically when compilation fails, times out, or encounters internal errors.
+- Enhanced monitoring dashboard to inspect, review, and filter failing LaTeX snippets with dedicated UI styling and an error details modal.
+- Added automatic fallback to local `monitoring/data/metrics.db` when running outside Docker without explicit environment variables.
+
+### Added
+
+- `latex_code` column in `latex_events` database schema (populated only on error conditions).
+- Error details modal and LaTeX snippet viewing components in the dashboard UI.
+
+### Changed
+
+- `src/bot.py`: Passes `latex_code` to metrics recorder on `compile_error`, `timeout`, and `internal_error`.
+- `src/metrics_store.py`: Added `latex_code` column support and automatic schema migration.
+- `monitoring/dashboard/app.py`: Extracts `latex_code` in `/api/events` and falls back to repository metrics DB path during local development.
+- `monitoring/dashboard/templates/index.html`: Added UI modal and view buttons for error code inspection.
+- `monitoring/dashboard/static/style.css`: Added styling for error preview cards, modal dialogues, and monospaced code blocks.
+
+---
+
+## [Dashboard and Usage Logging] - 2026-02-15
 
 ### Highlights
 
@@ -57,3 +78,48 @@ Release candidate for branch `Feature/Dashboard-and-Useage-logging` (`18` commit
   `METRICS_RETENTION_DAYS`, `METRICS_MAX_SIZE_BYTES`, `METRICS_MAINTENANCE_INTERVAL_SECONDS`.
 - Maintenance prunes old rows and trims oldest data if the DB exceeds configured size.
 
+---
+
+## [V2.3.1] [Better Stack Heartbeat and Status Monitoring] - 2026-08-16
+
+Release covering Pull Requests #60, #61, and #63.
+
+### Highlights
+
+- Added Better Stack periodic heartbeat background task to monitor bot uptime and detect outages.
+- Added lightweight aiohttp health check server listening on port `8082` (`/healthz`).
+- Added service status badge and Better Stack link to `README.md`.
+- Added port mapping for health server (`8082:8082`) in Docker Compose configurations.
+- Fixed SSL connection issues during heartbeat requests.
+- Added test coverage for heartbeat dispatch and health endpoint responses.
+
+### Added
+
+- Better Stack heartbeat loop (`betterstack_heartbeat_task`) in `src/bot.py`
+- Embedded HTTP health-check server (`/healthz`) on port `8082`
+- Automated test cases in `tests/test_bot_modal_flow.py` verifying heartbeat dispatch and status reporting
+
+### Changed
+
+- `src/bot.py`: Integrated health server startup and heartbeat lifecycle tasks.
+- `docker-compose.yml` & `docker-compose.prod.yml`: Exposed port `8082`.
+- `README.md`: Added live status badge.
+
+---
+
+## [V2.2.1] [Drop Legacy Commands and Privileged Intents] - 2026-06-05
+
+Release covering Pull Request #59.
+
+### Highlights
+
+- Dropped legacy message prefix command handling (`!latex`) in favor of Discord slash commands (`/latex`, `/quicklatex`, `/help`).
+- Removed requirement for privileged Message Content Intent in the Discord Developer Portal.
+- Simplified bot intent configuration to standard `discord.Intents.default()`.
+
+### Changed
+
+- `src/bot.py`: Removed `on_message` prefix command parser and privileged intent requirements.
+- `src/latex_module.py`: Cleaned up legacy prefix command dependencies.
+- `README.md`: Updated usage instructions to reflect slash-only commands.
+- `tests/`: Updated test suites to remove deprecated prefix command test cases.
