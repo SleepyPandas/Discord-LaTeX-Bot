@@ -37,7 +37,12 @@ LOGGER = logging.getLogger(__name__)
 
 def get_metrics_db_path() -> str:
     """Resolve metrics database location from environment."""
-    return os.getenv("METRICS_DB_PATH", "/data/metrics.db")
+    if "METRICS_DB_PATH" in os.environ:
+        return os.environ["METRICS_DB_PATH"]
+    local_db = REPO_ROOT / "monitoring" / "data" / "metrics.db"
+    if local_db.parent.exists():
+        return str(local_db)
+    return "/data/metrics.db"
 
 
 def get_dashboard_username() -> str:
