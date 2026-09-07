@@ -143,11 +143,29 @@ def _matched_dvipng_block_pattern(expr: str) -> str | None:
     return None
 
 
-def _format_user_error(prefix: str, message: str, line_no: int | None = None) -> str:
+def _format_source_snippet(expr: str | None, line_no: int | None) -> str | None:
+    if not expr or line_no is None or "\n" not in expr:
+        return None
+    lines = expr.splitlines()
+    if 1 <= line_no <= len(lines):
+        line_content = lines[line_no - 1].strip()
+        if line_content:
+            return f"{line_no} | {line_content}"
+    return None
+
+
+def _format_user_error(
+    prefix: str,
+    message: str,
+    line_no: int | None = None,
+    snippet: str | None = None,
+) -> str:
     if line_no is None:
         output = f"{prefix}: {message}"
     else:
         output = f"{prefix} (line {line_no}): {message}"
+    if snippet:
+        output += f"\n> {snippet}"
     return output if len(output) <= 500 else output[:497] + "..."
 
 
@@ -974,18 +992,24 @@ def _extract_best_command(
     return None
 
 
-def _format_environment_error(env_name: str, line_no: int | None) -> str:
+def _format_environment_error(
+    env_name: str,
+    line_no: int | None,
+    snippet: str | None = None,
+) -> str:
     required_package = _ENVIRONMENT_PACKAGE_HINTS.get(env_name.lower())
     if required_package:
         return _format_user_error(
             "LaTeX environment error",
             f"`{env_name}` requires `\\usepackage{{{required_package}}}` in the preamble.",
             line_no,
+            snippet=snippet,
         )
     return _format_user_error(
         "LaTeX environment error",
         f"`{env_name}` is unavailable in this renderer or is missing a required package import.",
         line_no,
+        snippet=snippet,
     )
 
 
@@ -996,6 +1020,11 @@ def _classify_compile_error(
     generated_line_no = _extract_generated_line_number(log_text)
     user_line_no = _map_generated_line_number(generated_line_no, render_request)
     lowered = log_text.lower()
+
+    snippet = _format_source_snippet(
+        render_request.source_expr if render_request else None,
+        user_line_no,
+    )
 
     file_ended_match = re.search(
         r"file ended while scanning use of\s+(\\[A-Za-z@]+)",
@@ -1008,6 +1037,7 @@ def _classify_compile_error(
             "LaTeX syntax error",
             _format_missing_closing_brace_message(command),
             user_line_no,
+            snippet=snippet,
         )
 
     environment_match = re.search(
@@ -1016,7 +1046,11 @@ def _classify_compile_error(
         re.IGNORECASE,
     )
     if environment_match:
-        return _format_environment_error(environment_match.group(1), user_line_no)
+        return _format_environment_error(
+            environment_match.group(1),
+            user_line_no,
+            snippet=snippet,
+        )
 
     if "missing } inserted" in lowered:
         command = _extract_best_command(
@@ -1029,6 +1063,7 @@ def _classify_compile_error(
             "LaTeX syntax error",
             _format_missing_closing_brace_message(command),
             user_line_no,
+            snippet=snippet,
         )
 
     if "missing $ inserted" in lowered:
@@ -1036,6 +1071,7 @@ def _classify_compile_error(
             "LaTeX syntax error",
             "Missing a math delimiter like `$...$` or `\\[...\\]`.",
             user_line_no,
+            snippet=snippet,
         )
 
     if "undefined control sequence" in lowered:
@@ -1049,16 +1085,33 @@ def _classify_compile_error(
             exact_user_line = _find_user_line_for_command(render_request.source_expr, command)
             if exact_user_line is not None:
                 user_line_no = exact_user_line
+                snippet = _format_source_snippet(render_request.source_expr, user_line_no)
         if command:
             return _format_user_error(
                 "LaTeX command error",
                 f"`{command}` is undefined. Check the command name or add the required package.",
                 user_line_no,
+                snippet=snippet,
             )
         return _format_user_error(
             "LaTeX command error",
             "An undefined command was used. Check the command name or add the required package.",
             user_line_no,
+            snippet=snippet,
+        )
+
+    package_error_match = re.search(
+        r"(?:[^\s:]+\.tex:\d+:\s*)?Package\s+([A-Za-z0-9_-]+)\s+Error:\s*(.+)",
+        log_text,
+    )
+    if package_error_match:
+        pkg_name = package_error_match.group(1).strip()
+        sanitized_message = re.sub(r"\s+", " ", package_error_match.group(2)).strip().rstrip(".")
+        return _format_user_error(
+            "LaTeX syntax error",
+            f"[{pkg_name}] {sanitized_message}.",
+            user_line_no,
+            snippet=snippet,
         )
 
     latex_error_match = re.search(r"LaTeX Error:\s*(.+)", log_text)
@@ -1068,6 +1121,7 @@ def _classify_compile_error(
             "LaTeX syntax error",
             sanitized_message + ".",
             user_line_no,
+            snippet=snippet,
         )
 
     bang_match = re.search(r"(?m)^!\s+(.+)$", log_text)
@@ -1081,6 +1135,7 @@ def _classify_compile_error(
                 "LaTeX syntax error",
                 sanitized_message + ".",
                 user_line_no,
+                snippet=snippet,
             )
 
     if render_request and render_request.preflight_issue:

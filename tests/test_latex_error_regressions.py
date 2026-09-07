@@ -129,6 +129,17 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
         self.assertIn(r"`\foo` is undefined", result)
         self.assertNotIn(r"`\frac`", result)
 
+    def test_multiline_failure_shows_snippet(self):
+        expr = "\\begin{align*}\n1 &= 1 \\\\\n\\badcmd &= 2\n\\end{align*}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_multiline")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn("LaTeX command error (line 3):", result)
+        self.assertIn("`\\badcmd` is undefined.", result)
+        self.assertIn("> 3 | \\badcmd &= 2", result)
+
 
 if __name__ == "__main__":
     unittest.main()
