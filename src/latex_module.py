@@ -892,11 +892,42 @@ def _find_snippet_line_for_generated_line(log_text: str, generated_line_no: int 
     return match.group(1).strip() if match else ""
 
 
-def _extract_command_from_snippet(snippet_line: str) -> str | None:
-    for match in _COMMAND_TOKEN_RE.finditer(snippet_line):
-        command = _normalize_command_name(match.group(0))
-        if command and command not in _IGNORE_WRAPPER_COMMANDS:
-            return command
+def _extract_last_command_from_snippet(snippet_line: str) -> str | None:
+    commands = [
+        _normalize_command_name(match.group(0))
+        for match in _COMMAND_TOKEN_RE.finditer(snippet_line)
+    ]
+    valid_commands = [
+        command for command in commands
+        if command and command not in _IGNORE_WRAPPER_COMMANDS
+    ]
+    return valid_commands[-1] if valid_commands else None
+
+
+_extract_command_from_snippet = _extract_last_command_from_snippet
+
+
+def _extract_command_from_log_context(log_text: str) -> str | None:
+    """Extract undefined command from TeX error context like <argument> or <recently read>."""
+    arg_matches = re.finditer(
+        r"(?:<argument>|<recently read>)\s*(.+?)(?=\r?\n\s*(?:l\.|\<|\Z)|$)",
+        log_text,
+        re.DOTALL,
+    )
+    for match in arg_matches:
+        first_line = match.group(1).splitlines()[0]
+        cmd = _extract_last_command_from_snippet(first_line)
+        if cmd:
+            return cmd
+    return None
+
+
+def _find_user_line_for_command(expr: str | None, command: str | None) -> int | None:
+    if not expr or not command:
+        return None
+    for idx, line in enumerate(expr.splitlines(), start=1):
+        if re.search(rf"(?<![A-Za-z@]){re.escape(command)}(?![A-Za-z@])", line):
+            return idx
     return None
 
 
@@ -906,13 +937,37 @@ def _extract_best_command(
     user_line_no: int | None,
     generated_line_no: int | None,
 ) -> str | None:
+    # 1. Prefer explicit TeX error context (<argument> or <recently read>)
+    cmd = _extract_command_from_log_context(log_text)
+    if cmd:
+        return cmd
+
+    # 2. Check the compiler snippet line l.<generated_line_no>
+    snippet_line = _find_snippet_line_for_generated_line(log_text, generated_line_no)
+    if snippet_line:
+        cmd = _extract_last_command_from_snippet(snippet_line)
+        if cmd:
+            return cmd
+
+    # 3. Check any l.<line> line in log_text
+    any_line_match = re.search(r"(?m)^l\.(\d+)\s+(.*)$", log_text)
+    if any_line_match:
+        cmd = _extract_last_command_from_snippet(any_line_match.group(2))
+        if cmd:
+            return cmd
+
+    # 4. Fall back to user source line only if exactly ONE candidate command exists
     if render_request is not None:
-        command = _extract_user_command(render_request.source_expr, user_line_no)
-        if command:
-            return command
-    return _extract_command_from_snippet(
-        _find_snippet_line_for_generated_line(log_text, generated_line_no)
-    )
+        source_line = _extract_source_line(render_request.source_expr, user_line_no)
+        commands = [
+            _normalize_command_name(match.group(0))
+            for match in _COMMAND_TOKEN_RE.finditer(source_line)
+        ]
+        valid_commands = [c for c in commands if c and c not in _IGNORE_WRAPPER_COMMANDS]
+        if len(valid_commands) == 1:
+            return valid_commands[0]
+
+    return None
 
 
 def _format_environment_error(env_name: str, line_no: int | None) -> str:
@@ -986,6 +1041,10 @@ def _classify_compile_error(
             user_line_no,
             generated_line_no,
         )
+        if command and render_request and render_request.source_expr:
+            exact_user_line = _find_user_line_for_command(render_request.source_expr, command)
+            if exact_user_line is not None:
+                user_line_no = exact_user_line
         if command:
             return _format_user_error(
                 "LaTeX command error",
