@@ -107,6 +107,8 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
             r"\text{hello}",
             r"\begin{aligned}a&=b\end{aligned}",
             r"\begin{bmatrix}1 & 2\\3 & 4\end{bmatrix}",
+            r"\begin{align*} 1 &= 1 \\ \implies 1 &= (1 + 1) - 1 \end{align*}",
+            r"\begin{gather*} x = 1 \end{gather*}",
         )
 
         for expr in cases:

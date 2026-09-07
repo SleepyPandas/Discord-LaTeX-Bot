@@ -14,6 +14,9 @@ _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
 _STRUCTURED_STANDALONE_ENV_RE = re.compile(
     r"\\begin\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis)\}"
 )
+_TOP_LEVEL_DISPLAY_MATH_ENV_RE = re.compile(
+    r"\\begin\{(?:align\*?|gather\*?|multline\*?|flalign\*?|alignat\*?|equation\*?|displaymath|eqnarray\*?)\b"
+)
 _PREAMBLE_LINE_RE = re.compile(
     r"(?m)^\s*\\(?:usepackage|usetikzlibrary|RequirePackage|pgfplotsset|tikzset)\b"
 )
@@ -787,8 +790,9 @@ def _normalize_full_document(expr: str) -> str:
 
 
 def _build_inline_document_with_line_map(expr: str) -> tuple[str, dict[int, int]]:
+    opts = "[varwidth,border=1mm]" if _TOP_LEVEL_DISPLAY_MATH_ENV_RE.search(expr) else "[border=1mm]"
     generated = (
-        r"\documentclass[border=1mm]{standalone}" "\n"
+        rf"\documentclass{opts}{{standalone}}" "\n"
         r"\usepackage{amsmath}" "\n"
         r"\usepackage{amssymb}" "\n"
         r"\usepackage{amsfonts}" "\n"
@@ -1154,6 +1158,8 @@ def _ensure_math_delimiters(expr: str) -> str:
     if not stripped:
         result = stripped
     elif r"\documentclass" in stripped or r"\begin{document}" in stripped:
+        result = stripped
+    elif _TOP_LEVEL_DISPLAY_MATH_ENV_RE.search(stripped):
         result = stripped
     elif display_batch_blocks and len(display_batch_blocks) > 1:
         result = _wrap_display_math_batch(display_batch_blocks)
