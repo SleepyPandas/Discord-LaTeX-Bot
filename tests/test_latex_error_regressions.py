@@ -87,6 +87,14 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
                 "\\usepackage{minted}\n\\begin{document}x\\end{document}",
                 ("Unsupported LaTeX feature (line 1):", "package `minted` requires shell escape"),
             ),
+            (
+                r"\frac{\foo}{2}",
+                ("LaTeX command error (line 1):", r"`\foo` is undefined."),
+            ),
+            (
+                r"\alpha + \beta + \unknowncmd + \gamma",
+                ("LaTeX command error (line 1):", r"`\unknowncmd` is undefined."),
+            ),
         )
 
         for expr, expected_substrings in cases:
@@ -99,6 +107,8 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
             r"\text{hello}",
             r"\begin{aligned}a&=b\end{aligned}",
             r"\begin{bmatrix}1 & 2\\3 & 4\end{bmatrix}",
+            r"\begin{align*} 1 &= 1 \\ \implies 1 &= (1 + 1) - 1 \end{align*}",
+            r"\begin{gather*} x = 1 \end{gather*}",
         )
 
         for expr in cases:
@@ -108,6 +118,27 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
                     result = latex_module.text_to_latex(expr, output_base)
 
                 self.assertIs(result, True)
+
+    def test_nested_command_does_not_blame_outer_command(self):
+        expr = r"\frac{\foo}{2}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_nested")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn(r"`\foo` is undefined", result)
+        self.assertNotIn(r"`\frac`", result)
+
+    def test_multiline_failure_shows_snippet(self):
+        expr = "\\begin{align*}\n1 &= 1 \\\\\n\\badcmd &= 2\n\\end{align*}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_multiline")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn("LaTeX command error (line 3):", result)
+        self.assertIn("`\\badcmd` is undefined.", result)
+        self.assertIn("> 3 | \\badcmd &= 2", result)
 
 
 if __name__ == "__main__":

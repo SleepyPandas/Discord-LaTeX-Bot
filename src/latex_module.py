@@ -14,6 +14,9 @@ _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
 _STRUCTURED_STANDALONE_ENV_RE = re.compile(
     r"\\begin\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis)\}"
 )
+_TOP_LEVEL_DISPLAY_MATH_ENV_RE = re.compile(
+    r"\\begin\{(?:align\*?|gather\*?|multline\*?|flalign\*?|alignat\*?|equation\*?|displaymath|eqnarray\*?)\b"
+)
 _PREAMBLE_LINE_RE = re.compile(
     r"(?m)^\s*\\(?:usepackage|usetikzlibrary|RequirePackage|pgfplotsset|tikzset)\b"
 )
@@ -140,11 +143,29 @@ def _matched_dvipng_block_pattern(expr: str) -> str | None:
     return None
 
 
-def _format_user_error(prefix: str, message: str, line_no: int | None = None) -> str:
+def _format_source_snippet(expr: str | None, line_no: int | None) -> str | None:
+    if not expr or line_no is None or "\n" not in expr:
+        return None
+    lines = expr.splitlines()
+    if 1 <= line_no <= len(lines):
+        line_content = lines[line_no - 1].strip()
+        if line_content:
+            return f"{line_no} | {line_content}"
+    return None
+
+
+def _format_user_error(
+    prefix: str,
+    message: str,
+    line_no: int | None = None,
+    snippet: str | None = None,
+) -> str:
     if line_no is None:
         output = f"{prefix}: {message}"
     else:
         output = f"{prefix} (line {line_no}): {message}"
+    if snippet:
+        output += f"\n> {snippet}"
     return output if len(output) <= 500 else output[:497] + "..."
 
 
@@ -787,8 +808,9 @@ def _normalize_full_document(expr: str) -> str:
 
 
 def _build_inline_document_with_line_map(expr: str) -> tuple[str, dict[int, int]]:
+    opts = "[varwidth,border=1mm]" if _TOP_LEVEL_DISPLAY_MATH_ENV_RE.search(expr) else "[border=1mm]"
     generated = (
-        r"\documentclass[border=1mm]{standalone}" "\n"
+        rf"\documentclass{opts}{{standalone}}" "\n"
         r"\usepackage{amsmath}" "\n"
         r"\usepackage{amssymb}" "\n"
         r"\usepackage{amsfonts}" "\n"
@@ -892,11 +914,42 @@ def _find_snippet_line_for_generated_line(log_text: str, generated_line_no: int 
     return match.group(1).strip() if match else ""
 
 
-def _extract_command_from_snippet(snippet_line: str) -> str | None:
-    for match in _COMMAND_TOKEN_RE.finditer(snippet_line):
-        command = _normalize_command_name(match.group(0))
-        if command and command not in _IGNORE_WRAPPER_COMMANDS:
-            return command
+def _extract_last_command_from_snippet(snippet_line: str) -> str | None:
+    commands = [
+        _normalize_command_name(match.group(0))
+        for match in _COMMAND_TOKEN_RE.finditer(snippet_line)
+    ]
+    valid_commands = [
+        command for command in commands
+        if command and command not in _IGNORE_WRAPPER_COMMANDS
+    ]
+    return valid_commands[-1] if valid_commands else None
+
+
+_extract_command_from_snippet = _extract_last_command_from_snippet
+
+
+def _extract_command_from_log_context(log_text: str) -> str | None:
+    """Extract undefined command from TeX error context like <argument> or <recently read>."""
+    arg_matches = re.finditer(
+        r"(?:<argument>|<recently read>)\s*(.+?)(?=\r?\n\s*(?:l\.|\<|\Z)|$)",
+        log_text,
+        re.DOTALL,
+    )
+    for match in arg_matches:
+        first_line = match.group(1).splitlines()[0]
+        cmd = _extract_last_command_from_snippet(first_line)
+        if cmd:
+            return cmd
+    return None
+
+
+def _find_user_line_for_command(expr: str | None, command: str | None) -> int | None:
+    if not expr or not command:
+        return None
+    for idx, line in enumerate(expr.splitlines(), start=1):
+        if re.search(rf"(?<![A-Za-z@]){re.escape(command)}(?![A-Za-z@])", line):
+            return idx
     return None
 
 
@@ -906,27 +959,57 @@ def _extract_best_command(
     user_line_no: int | None,
     generated_line_no: int | None,
 ) -> str | None:
+    # 1. Prefer explicit TeX error context (<argument> or <recently read>)
+    cmd = _extract_command_from_log_context(log_text)
+    if cmd:
+        return cmd
+
+    # 2. Check the compiler snippet line l.<generated_line_no>
+    snippet_line = _find_snippet_line_for_generated_line(log_text, generated_line_no)
+    if snippet_line:
+        cmd = _extract_last_command_from_snippet(snippet_line)
+        if cmd:
+            return cmd
+
+    # 3. Check any l.<line> line in log_text
+    any_line_match = re.search(r"(?m)^l\.(\d+)\s+(.*)$", log_text)
+    if any_line_match:
+        cmd = _extract_last_command_from_snippet(any_line_match.group(2))
+        if cmd:
+            return cmd
+
+    # 4. Fall back to user source line only if exactly ONE candidate command exists
     if render_request is not None:
-        command = _extract_user_command(render_request.source_expr, user_line_no)
-        if command:
-            return command
-    return _extract_command_from_snippet(
-        _find_snippet_line_for_generated_line(log_text, generated_line_no)
-    )
+        source_line = _extract_source_line(render_request.source_expr, user_line_no)
+        commands = [
+            _normalize_command_name(match.group(0))
+            for match in _COMMAND_TOKEN_RE.finditer(source_line)
+        ]
+        valid_commands = [c for c in commands if c and c not in _IGNORE_WRAPPER_COMMANDS]
+        if len(valid_commands) == 1:
+            return valid_commands[0]
+
+    return None
 
 
-def _format_environment_error(env_name: str, line_no: int | None) -> str:
+def _format_environment_error(
+    env_name: str,
+    line_no: int | None,
+    snippet: str | None = None,
+) -> str:
     required_package = _ENVIRONMENT_PACKAGE_HINTS.get(env_name.lower())
     if required_package:
         return _format_user_error(
             "LaTeX environment error",
             f"`{env_name}` requires `\\usepackage{{{required_package}}}` in the preamble.",
             line_no,
+            snippet=snippet,
         )
     return _format_user_error(
         "LaTeX environment error",
         f"`{env_name}` is unavailable in this renderer or is missing a required package import.",
         line_no,
+        snippet=snippet,
     )
 
 
@@ -937,6 +1020,11 @@ def _classify_compile_error(
     generated_line_no = _extract_generated_line_number(log_text)
     user_line_no = _map_generated_line_number(generated_line_no, render_request)
     lowered = log_text.lower()
+
+    snippet = _format_source_snippet(
+        render_request.source_expr if render_request else None,
+        user_line_no,
+    )
 
     file_ended_match = re.search(
         r"file ended while scanning use of\s+(\\[A-Za-z@]+)",
@@ -949,6 +1037,7 @@ def _classify_compile_error(
             "LaTeX syntax error",
             _format_missing_closing_brace_message(command),
             user_line_no,
+            snippet=snippet,
         )
 
     environment_match = re.search(
@@ -957,7 +1046,11 @@ def _classify_compile_error(
         re.IGNORECASE,
     )
     if environment_match:
-        return _format_environment_error(environment_match.group(1), user_line_no)
+        return _format_environment_error(
+            environment_match.group(1),
+            user_line_no,
+            snippet=snippet,
+        )
 
     if "missing } inserted" in lowered:
         command = _extract_best_command(
@@ -970,6 +1063,7 @@ def _classify_compile_error(
             "LaTeX syntax error",
             _format_missing_closing_brace_message(command),
             user_line_no,
+            snippet=snippet,
         )
 
     if "missing $ inserted" in lowered:
@@ -977,6 +1071,7 @@ def _classify_compile_error(
             "LaTeX syntax error",
             "Missing a math delimiter like `$...$` or `\\[...\\]`.",
             user_line_no,
+            snippet=snippet,
         )
 
     if "undefined control sequence" in lowered:
@@ -986,16 +1081,37 @@ def _classify_compile_error(
             user_line_no,
             generated_line_no,
         )
+        if command and render_request and render_request.source_expr:
+            exact_user_line = _find_user_line_for_command(render_request.source_expr, command)
+            if exact_user_line is not None:
+                user_line_no = exact_user_line
+                snippet = _format_source_snippet(render_request.source_expr, user_line_no)
         if command:
             return _format_user_error(
                 "LaTeX command error",
                 f"`{command}` is undefined. Check the command name or add the required package.",
                 user_line_no,
+                snippet=snippet,
             )
         return _format_user_error(
             "LaTeX command error",
             "An undefined command was used. Check the command name or add the required package.",
             user_line_no,
+            snippet=snippet,
+        )
+
+    package_error_match = re.search(
+        r"(?:[^\s:]+\.tex:\d+:\s*)?Package\s+([A-Za-z0-9_-]+)\s+Error:\s*(.+)",
+        log_text,
+    )
+    if package_error_match:
+        pkg_name = package_error_match.group(1).strip()
+        sanitized_message = re.sub(r"\s+", " ", package_error_match.group(2)).strip().rstrip(".")
+        return _format_user_error(
+            "LaTeX syntax error",
+            f"[{pkg_name}] {sanitized_message}.",
+            user_line_no,
+            snippet=snippet,
         )
 
     latex_error_match = re.search(r"LaTeX Error:\s*(.+)", log_text)
@@ -1005,6 +1121,7 @@ def _classify_compile_error(
             "LaTeX syntax error",
             sanitized_message + ".",
             user_line_no,
+            snippet=snippet,
         )
 
     bang_match = re.search(r"(?m)^!\s+(.+)$", log_text)
@@ -1018,6 +1135,7 @@ def _classify_compile_error(
                 "LaTeX syntax error",
                 sanitized_message + ".",
                 user_line_no,
+                snippet=snippet,
             )
 
     if render_request and render_request.preflight_issue:
@@ -1095,6 +1213,8 @@ def _ensure_math_delimiters(expr: str) -> str:
     if not stripped:
         result = stripped
     elif r"\documentclass" in stripped or r"\begin{document}" in stripped:
+        result = stripped
+    elif _TOP_LEVEL_DISPLAY_MATH_ENV_RE.search(stripped):
         result = stripped
     elif display_batch_blocks and len(display_batch_blocks) > 1:
         result = _wrap_display_math_batch(display_batch_blocks)
