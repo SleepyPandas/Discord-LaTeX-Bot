@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [V2.5.0] [Accurate Error Attribution & Display Math Support] - 2026-09-07
+
+### Highlights
+
+- Supported top-level AMS display math environments (`align*`, `gather*`, `multline*`, `alignat*`, etc.) without inline math delimiter conflicts.
+- Fixed undefined command attribution to extract the actual failing macro from TeX error logs instead of the first command on the source line.
+- Added visual source line snippets (`> line | content`) to multi-line compilation error messages.
+
+### Added
+
+- `_TOP_LEVEL_DISPLAY_MATH_ENV_RE` in `src/latex_module.py` detecting standalone display math environments.
+- `_format_source_snippet` in `src/latex_module.py` providing line preview snippets for multi-line error embeds.
+- `_find_user_line_for_command` in `src/latex_module.py` to pinpoint exact macro error lines in buffered blocks.
+- Automated regression tests for display math rendering, nested command attribution, and multi-line error snippets.
+
+### Changed
+
+- `src/bot.py`: Bumped `__version__` to `2.5.0`.
+- `src/latex_module.py`: Prevented wrapping top-level display math in inline delimiters, applied conditional `varwidth` to `standalone`, and prioritized TeX error logs (`<argument>`, snippet breakpoints) for undefined command extraction.
+
+---
+
 ## [V2.4.2] [Help Command Version Display & Links] - 2026-09-06
 
 ### Highlights
