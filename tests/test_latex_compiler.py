@@ -274,6 +274,30 @@ class LatexCompilerTestCase(unittest.TestCase):
             "pdflatex",
         )
 
+    def test_latex2png_passes_transparent_and_png_fmt(self):
+        renderer = Latex2PNG()
+
+        with patch(
+            "modified_packages.tex2img.LatexCompiler.compile",
+            return_value=b"%PDF-1.7\nunit-test\n",
+        ), patch(
+            "modified_packages.tex2img.pdf2image.convert_from_bytes",
+            return_value=[FakeImage()],
+        ) as mock_convert:
+            renderer.compile(
+                r"\documentclass{article}\begin{document}ok\end{document}",
+                transparent=True,
+                dpi=400,
+            )
+
+        mock_convert.assert_called_once_with(
+            b"%PDF-1.7\nunit-test\n",
+            dpi=400,
+            thread_count=1,
+            transparent=True,
+            fmt="png",
+        )
+
     def test_inline_dvipng_renderer_runs_latex_then_dvipng(self):
         latex_code = r"\documentclass{standalone}\begin{document}$x^2$\end{document}"
 

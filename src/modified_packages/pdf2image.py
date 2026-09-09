@@ -128,6 +128,9 @@ def convert_from_path(
         pdf_path, userpw, ownerpw, poppler_path=poppler_path
     )["Pages"]
 
+    if transparent and fmt == "ppm":
+        fmt = "png"
+
     # We start by getting the output format, the buffer processing function and if we need pdftocairo
     parsed_fmt, final_extension, parse_buffer_func, use_pdfcairo_format = _parse_format(
         fmt, grayscale
