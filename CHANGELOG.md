@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [V2.5.1] [Fix Delimiter False Positives & Fallback Transparency] - 2026-09-09
+
+### Highlights
+
+- Fixed a false-positive preflight syntax error where LaTeX newline commands with spacing arguments (`\\[<length>]`) were incorrectly parsed as unclosed `\[` display math blocks.
+- Fixed an issue where expressions falling back to `pdflatex` / `Latex2PNG` (e.g. inputs containing `\renewcommand`) rendered as opaque white rectangles due to missing format hints for Poppler transparency.
+
+### Added
+
+- Regression test in `tests/test_latex_module.py` ensuring newlines with optional spacing (`\\[4pt]`) and parenthesized expressions (`\\(a)`) pass preflight validation.
+- Unit test in `tests/test_latex_compiler.py` verifying that `Latex2PNG` requests PNG format and transparency from `pdf2image`.
+
+### Changed
+
+- `src/bot.py`: Bumped `__version__` to `2.5.1`.
+- `src/latex_module.py`: Updated `_detect_math_delimiter_issue` to skip escaped newlines (`\\`) before checking for math delimiters.
+- `src/modified_packages/tex2img.py`: Explicitly passed `fmt='png'` to `pdf2image.convert_from_bytes` in `Latex2PNG.compile`.
+- `src/modified_packages/pdf2image.py`: Automatically promoted default `fmt="ppm"` to `"png"` when `transparent=True` is requested.
+
+---
+
 ## [V2.5.0] [Accurate Error Attribution & Display Math Support] - 2026-09-07
 
 ### Highlights

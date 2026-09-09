@@ -13,7 +13,7 @@ import uuid
 from aiohttp import web
 from discord import app_commands, Color
 
-__version__ = "2.5.0"
+__version__ = "2.5.1"
 
 
 def _read_int_env(
