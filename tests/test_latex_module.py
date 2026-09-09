@@ -247,6 +247,29 @@ class LatexModuleTestCase(unittest.TestCase):
         self.assertIsNone(latex_module._run_preflight_checks(r"\[x\]"))
         self.assertIsNone(latex_module._run_preflight_checks(r"\(x\)"))
         self.assertIsNone(latex_module._run_preflight_checks(r"$x$"))
+        self.assertIsNone(
+            latex_module._run_preflight_checks(
+                r"\[ \begin{aligned} a \\[4pt] b \end{aligned} \]"
+            )
+        )
+        self.assertIsNone(
+            latex_module._run_preflight_checks(
+                r"\[ \begin{aligned} a \\(b) \end{aligned} \]"
+            )
+        )
+
+    def test_preflight_accepts_matrix_with_vertical_row_spacing(self):
+        expr = (
+            r"{\small\setlength{\arraycolsep}{9pt}\renewcommand{\arraystretch}{1.15}" "\n"
+            r"\[" "\n"
+            r"\begin{aligned}" "\n"
+            r"    &\left[\begin{array}{cccc|c} 0 & 0 & 1 & 1 & 3 \\ 1 & 2 & 1 & 0 & 2 \end{array}\right] \\[4pt]" "\n"
+            r"    &\left[\begin{array}{cccc|c} 1 & 2 & 1 & 0 & 2 \\ 0 & 0 & 1 & 1 & 3 \end{array}\right]" "\n"
+            r"\end{aligned}" "\n"
+            r"\]" "\n"
+            r"}"
+        )
+        self.assertIsNone(latex_module._run_preflight_checks(expr))
 
     def test_preflight_detects_missing_closing_double_dollar_math_block(self):
         issue = latex_module._run_preflight_checks(r"$$x+1")
