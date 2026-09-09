@@ -325,6 +325,9 @@ def _detect_math_delimiter_issue(expr: str) -> PreflightIssue | None:
             line_no += 1
             i += 1
             continue
+        if expr.startswith(r"\\", i):
+            i += 2
+            continue
         if expr.startswith(r"\[", i):
             bracket_stack.append((r"\[", line_no))
             i += 2
