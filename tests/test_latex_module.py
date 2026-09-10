@@ -481,7 +481,7 @@ class LatexModuleTestCase(unittest.TestCase):
     def test_normalize_full_document_adds_standalone_class_when_missing(self):
         result = latex_module._normalize_full_document(r"\begin{document}x\end{document}")
 
-        self.assertTrue(result.startswith(r"\documentclass[border=1mm]{standalone}"))
+        self.assertTrue(result.startswith(r"\documentclass[varwidth,border=1mm]{standalone}"))
         self.assertIn(r"\begin{document}x\end{document}", result)
 
     def test_normalize_full_document_wraps_bare_tikzpicture_in_document_body(self):
@@ -698,11 +698,29 @@ class LatexModuleTestCase(unittest.TestCase):
 
         mock_dvipng_renderer.assert_not_called()
         compile_args, compile_kwargs = mock_renderer.compile.call_args
-        self.assertIn(r"\documentclass[border=1mm]{standalone}", compile_args[0])
+        self.assertIn(r"\documentclass[varwidth,border=1mm]{standalone}", compile_args[0])
         self.assertIn(r"\begin{document}x\end{document}", compile_args[0])
         self.assertEqual(compile_kwargs["compiler"], "pdflatex")
         self.assertEqual(compile_kwargs["dpi"], 410)
         self.assertFalse(compile_kwargs["transparent"])
+
+    def test_text_to_latex_renders_document_with_display_math_and_text(self):
+        user_snippet = (
+            "\\begin{document}\n\n"
+            "we can assume $\\angle POQ = \\angle OQR = 60^\\circ$\n\n"
+            "\\[\n"
+            "because A = (4 \\cdot 11) - \\left(\\frac{60}{360} \\cdot \\pi \\cdot 4^2\\right)\n"
+            "\\]\n\n"
+            "\\end{document}"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "render_doc_math")
+            result = latex_module.text_to_latex(user_snippet, output_base, dpi=300)
+            output_path = Path(f"{output_base}.png")
+
+            self.assertEqual(result, True)
+            self.assertTrue(output_path.exists())
+            self.assertTrue(output_path.read_bytes().startswith(PNG_SIGNATURE))
 
 
 if __name__ == "__main__":

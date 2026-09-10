@@ -614,7 +614,7 @@ def _content_suggests_tikz(latex_code: str) -> bool:
 
 
 def _documentclass_options_for_content(latex_code: str) -> str:
-    return "[tikz,border=6pt]" if _content_suggests_tikz(latex_code) else "[border=1mm]"
+    return "[tikz,border=6pt]" if _content_suggests_tikz(latex_code) else "[varwidth,border=1mm]"
 
 
 def _needs_standalone_document_shell(expr: str) -> bool:
