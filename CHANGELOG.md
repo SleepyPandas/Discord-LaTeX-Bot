@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [V2.5.2] [Varwidth Option for Standalone Document Normalization] - 2026-09-10
+
+### Highlights
+
+- Enabled the `varwidth` option on non-TikZ standalone documents (`\documentclass[varwidth,border=1mm]{standalone}`) when document environments (`\begin{document}...\end{document}`) are provided.
+- Fixed TeX compilation failures on full documents that combine regular paragraph text with standalone display math blocks (`\[...\]` or equation environments).
+
+### Added
+
+- Regression test in `tests/test_latex_module.py` (`test_text_to_latex_renders_document_with_display_math_and_text`) verifying document rendering with mixed paragraph text and display math blocks.
+
+### Changed
+
+- `src/bot.py`: Bumped `__version__` to `2.5.2`.
+- `src/latex_module.py`: Applied `[varwidth,border=1mm]` documentclass options in `_documentclass_options_for_content` when content does not require TikZ.
+
+---
+
 ## [V2.5.1] [Fix Delimiter False Positives & Fallback Transparency] - 2026-09-09
 
 ### Highlights
