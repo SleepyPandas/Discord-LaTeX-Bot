@@ -705,6 +705,7 @@ class LatexModuleTestCase(unittest.TestCase):
         self.assertFalse(compile_kwargs["transparent"])
 
     def test_text_to_latex_renders_document_with_display_math_and_text(self):
+        png_payload = PNG_SIGNATURE + b"doc-math-payload"
         user_snippet = (
             "\\begin{document}\n\n"
             "we can assume $\\angle POQ = \\angle OQR = 60^\\circ$\n\n"
@@ -715,12 +716,26 @@ class LatexModuleTestCase(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             output_base = str(Path(temp_dir) / "render_doc_math")
-            result = latex_module.text_to_latex(user_snippet, output_base, dpi=300)
-            output_path = Path(f"{output_base}.png")
+            with patch.object(latex_module, "InlineDviPngRenderer") as mock_dvipng_renderer, patch.object(
+                latex_module,
+                "Latex2PNG",
+            ) as mock_latex2png:
+                mock_renderer = mock_latex2png.return_value
+                mock_renderer.compile.return_value = png_payload
 
+                result = latex_module.text_to_latex(user_snippet, output_base, dpi=300)
+
+            output_path = Path(f"{output_base}.png")
             self.assertEqual(result, True)
             self.assertTrue(output_path.exists())
-            self.assertTrue(output_path.read_bytes().startswith(PNG_SIGNATURE))
+            self.assertEqual(output_path.read_bytes(), png_payload)
+            mock_dvipng_renderer.assert_not_called()
+            mock_renderer.compile.assert_called_once()
+            compile_args, compile_kwargs = mock_renderer.compile.call_args
+            self.assertIn(r"\documentclass[varwidth,border=1mm]{standalone}", compile_args[0])
+            self.assertIn(r"we can assume $\angle POQ = \angle OQR = 60^\circ$", compile_args[0])
+            self.assertEqual(compile_kwargs["compiler"], "pdflatex")
+            self.assertEqual(compile_kwargs["dpi"], 300)
 
 
 if __name__ == "__main__":
