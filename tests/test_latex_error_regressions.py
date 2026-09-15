@@ -202,6 +202,24 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
         self.assertIn(long_cmd, result)
         self.assertIn("is undefined.", result)
 
+    def test_real_compiler_snippet_with_backticks_preserves_code_block(self):
+        # When user code contains comments or text with triple backticks, the snippet codeblock must remain valid
+        triple_bt = chr(96) * 3
+        expr = f"\\begin{{align*}}\n1 &= 1 \\\\\n% {triple_bt}\n\\badcmd &= 2\n\\end{{align*}}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_backticks")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn("LaTeX command error (line 4):", result)
+        self.assertIn("```text\n", result)
+        self.assertTrue(result.endswith("\n```"))
+        # Check that the code block has not prematurely closed
+        snippet_body = result[result.index("```text\n") + len("```text\n") : -len("\n```")]
+        self.assertNotIn(triple_bt, snippet_body)
+        self.assertIn("> 4 | \\badcmd &= 2", snippet_body)
+        self.assertIn("  5 | \\end{align*}", snippet_body)
+
 
 if __name__ == "__main__":
     unittest.main()

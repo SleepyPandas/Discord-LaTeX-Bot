@@ -1226,6 +1226,82 @@ class LatexModuleTestCase(unittest.TestCase):
         error_msg = latex_module._format_user_error("LaTeX syntax error", "Failed.", line_no=1.5)
         self.assertEqual(error_msg, "LaTeX syntax error: Failed.")
 
+    def test_format_user_error_zero_and_negative_line_no(self):
+        # Line numbers <= 0 are invalid for 1-indexed source code and should be omitted
+        error_msg_zero = latex_module._format_user_error("LaTeX syntax error", "Failed.", line_no=0)
+        self.assertEqual(error_msg_zero, "LaTeX syntax error: Failed.")
+
+        error_msg_neg = latex_module._format_user_error("LaTeX syntax error", "Failed.", line_no=-5)
+        self.assertEqual(error_msg_neg, "LaTeX syntax error: Failed.")
+
+    def test_format_user_error_zero_and_negative_max_length(self):
+        # When max_length <= 0, return empty string
+        self.assertEqual(latex_module._format_user_error("Err", "Message", max_length=0), "")
+        self.assertEqual(latex_module._format_user_error("Err", "Message", max_length=-1), "")
+
+    def test_format_user_error_sanitizes_triple_backticks_in_snippet(self):
+        # Backticks inside user code (e.g. % ```) must not break Discord code block fences
+        triple_bt = chr(96) * 3
+        quad_bt = chr(96) * 4
+        snippet = f"  2 | % {triple_bt}\n> 3 | \\badcmd\n  4 | % {quad_bt}"
+        error_msg = latex_module._format_user_error(
+            "LaTeX command error",
+            "Undefined command.",
+            line_no=3,
+            snippet=snippet,
+        )
+        self.assertIn("```text\n", error_msg)
+        self.assertTrue(error_msg.endswith("\n```"))
+        # Inside the fences, raw 3-consecutive-backtick runs must be broken with zero-width spaces
+        body = error_msg[len("LaTeX command error (line 3): Undefined command.\n```text\n") : -len("\n```")]
+        self.assertNotIn(triple_bt, body)
+        self.assertIn("> 3 | \\badcmd", body)
+
+    def test_format_user_error_unwraps_pre_fenced_snippet(self):
+        # Passing an already-fenced snippet should not produce nested ``` fences
+        snippet = "```text\n  2 | line 2\n> 3 | line 3\n```"
+        error_msg = latex_module._format_user_error(
+            "LaTeX syntax error",
+            "Failed.",
+            line_no=3,
+            snippet=snippet,
+        )
+        self.assertEqual(error_msg.count("```"), 2)
+        self.assertIn("```text\n  2 | line 2\n> 3 | line 3\n```", error_msg)
+
+    def test_format_source_snippet_as_code_block(self):
+        expr = "line 1\nline 2\nline 3"
+        snippet = latex_module._format_source_snippet(
+            expr, line_no=2, context_lines=1, as_code_block=True
+        )
+        self.assertIsNotNone(snippet)
+        self.assertTrue(snippet.startswith("```text\n"))
+        self.assertTrue(snippet.endswith("\n```"))
+        self.assertIn("  1 | line 1\n> 2 | line 2\n  3 | line 3", snippet)
+
+    def test_format_source_snippet_as_code_block_respects_max_total_length(self):
+        expr = "line 1\nline 2\nline 3\nline 4\nline 5"
+        snippet = latex_module._format_source_snippet(
+            expr, line_no=3, context_lines=2, max_total_length=35, as_code_block=True
+        )
+        self.assertIsNotNone(snippet)
+        self.assertLessEqual(len(snippet), 35)
+        self.assertTrue(snippet.startswith("```text\n"))
+        self.assertTrue(snippet.endswith("\n```"))
+
+    def test_format_source_snippet_zero_and_negative_limits(self):
+        expr = "line 1\nline 2"
+        snippet_zero_line = latex_module._format_source_snippet(
+            expr, line_no=1, context_lines=0, max_line_length=0
+        )
+        self.assertIsNotNone(snippet_zero_line)
+        self.assertEqual(snippet_zero_line, "> 1 |")
+
+        snippet_zero_total = latex_module._format_source_snippet(
+            expr, line_no=1, context_lines=0, max_total_length=0
+        )
+        self.assertEqual(snippet_zero_total, "")
+
 
 if __name__ == "__main__":
     unittest.main()
