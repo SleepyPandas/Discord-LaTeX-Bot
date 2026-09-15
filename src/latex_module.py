@@ -154,7 +154,8 @@ def _format_source_snippet(
     """Format source code context snippet around the error line.
 
     Provides a multi-line visual snippet (default: 1 line before, target line,
-    1 line after) with line numbers and a pointer ('>') marking the error line.
+    1 line after) formatted as a Discord blockquote (prefixed with '> ') with line numbers
+    and a pointer ('>') marking the error line.
     Preserves empty lines in context, right-aligns line numbers to matching column widths,
     and trims context lines to stay within Discord embed length limits.
 
@@ -205,14 +206,15 @@ def _format_source_snippet(
                 raw_content = raw_content[: max_line_length - 3] + "..."
 
         # Error line is marked with '>', while context lines are marked with ' '
+        # Each line is prefixed with '> ' so Discord renders the entire snippet as a blockquote
         marker = ">" if curr_line == line_no else " "
         num_str = f"{curr_line:>{max_num_width}}"
 
         # Preserve empty lines without trailing whitespace after the pipe separator
         if raw_content:
-            formatted_lines.append(f"{marker} {num_str} | {raw_content}")
+            formatted_lines.append(f"> {marker} {num_str} | {raw_content}")
         else:
-            formatted_lines.append(f"{marker} {num_str} |")
+            formatted_lines.append(f"> {marker} {num_str} |")
 
     # If the combined snippet exceeds max_total_length, drop context lines furthest
     # from the target line first, ensuring the error line is never dropped.
