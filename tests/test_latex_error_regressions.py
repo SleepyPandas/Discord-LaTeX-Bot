@@ -138,10 +138,12 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
         self.assertIsInstance(result, str)
         self.assertIn("LaTeX command error (line 3):", result)
         self.assertIn("`\\badcmd` is undefined.", result)
-        # Verify 3-line context: line before (2), target line (3), line after (4)
-        self.assertIn(">   2 | 1 &= 1 \\\\", result)
-        self.assertIn("> > 3 | \\badcmd &= 2", result)
-        self.assertIn(">   4 | \\end{align*}", result)
+        # Verify 3-line context inside text code block: line before (2), target line (3), line after (4)
+        self.assertIn("```text\n", result)
+        self.assertIn("  2 | 1 &= 1 \\\\", result)
+        self.assertIn("> 3 | \\badcmd &= 2", result)
+        self.assertIn("  4 | \\end{align*}", result)
+        self.assertIn("\n```", result)
 
     def test_multiline_failure_on_empty_line_shows_context_snippet(self):
         # Empty line following \\ causes a syntax error; verify empty line is preserved in snippet
@@ -152,9 +154,11 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
 
         self.assertIsInstance(result, str)
         self.assertIn("LaTeX syntax error (line 3):", result)
-        self.assertIn(">   2 | 1 &= 1 \\\\", result)
-        self.assertIn("> > 3 |", result)
-        self.assertIn(">   4 | 2 &= 2", result)
+        self.assertIn("```text\n", result)
+        self.assertIn("  2 | 1 &= 1 \\\\", result)
+        self.assertIn("> 3 |", result)
+        self.assertIn("  4 | 2 &= 2", result)
+        self.assertIn("\n```", result)
 
     def test_real_compiler_no_line_to_end_error_not_truncated(self):
         expr = "\\begin{document}\n\\\\\n\\end{document}"

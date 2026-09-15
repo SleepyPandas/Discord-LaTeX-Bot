@@ -320,12 +320,14 @@ class BotModalFlowTestCase(unittest.TestCase):
 
         self.assertEqual(result, message)
 
-    def test_format_compile_error_description_preserves_snippet_blockquotes(self):
+    def test_format_compile_error_description_preserves_snippet_codeblock(self):
         message = (
             "LaTeX syntax error (line 3): Missing `}` to finish `\\frac{...}{...}`.\n"
-            ">   2 | line 2\n"
-            "> > 3 | line 3\n"
-            ">   4 | line 4"
+            "```text\n"
+            "  2 | line 2\n"
+            "> 3 | line 3\n"
+            "  4 | line 4\n"
+            "```"
         )
 
         result = self.bot._format_compile_error_description(message)

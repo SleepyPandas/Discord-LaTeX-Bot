@@ -154,10 +154,9 @@ def _format_source_snippet(
     """Format source code context snippet around the error line.
 
     Provides a multi-line visual snippet (default: 1 line before, target line,
-    1 line after) formatted as a Discord blockquote (prefixed with '> ') with line numbers
-    and a pointer ('>') marking the error line.
+    1 line after) with line numbers and a pointer ('>') marking the error line.
     Preserves empty lines in context, right-aligns line numbers to matching column widths,
-    and trims context lines to stay within Discord embed length limits.
+    and trims context lines to stay within limits.
 
     Args:
         expr: The user's input LaTeX source code.
@@ -206,15 +205,15 @@ def _format_source_snippet(
                 raw_content = raw_content[: max_line_length - 3] + "..."
 
         # Error line is marked with '>', while context lines are marked with ' '
-        # Each line is prefixed with '> ' so Discord renders the entire snippet as a blockquote
+        # Outer blockquote markers ('> ') are omitted so snippets render cleanly in monospace code blocks
         marker = ">" if curr_line == line_no else " "
         num_str = f"{curr_line:>{max_num_width}}"
 
         # Preserve empty lines without trailing whitespace after the pipe separator
         if raw_content:
-            formatted_lines.append(f"> {marker} {num_str} | {raw_content}")
+            formatted_lines.append(f"{marker} {num_str} | {raw_content}")
         else:
-            formatted_lines.append(f"> {marker} {num_str} |")
+            formatted_lines.append(f"{marker} {num_str} |")
 
     # If the combined snippet exceeds max_total_length, drop context lines furthest
     # from the target line first, ensuring the error line is never dropped.
@@ -250,6 +249,10 @@ def _format_user_error(
 ) -> str:
     """Format a user-facing error message with optional line number and source snippet.
 
+    Formats the source snippet inside a Discord code block (```text ... ```) to prevent
+    Markdown escaping of LaTeX characters (such as '\\') and ensure monospace font alignment
+    in Discord embeds.
+
     Args:
         prefix: Category header (e.g. 'LaTeX syntax error', 'LaTeX command error').
         message: Human-readable explanation of the compilation failure.
@@ -261,16 +264,52 @@ def _format_user_error(
         Discord-ready formatted error string capped at max_length.
     """
     if line_no is None or isinstance(line_no, bool) or not isinstance(line_no, int):
-        output = f"{prefix}: {message}"
+        header = f"{prefix}: {message}"
     else:
-        output = f"{prefix} (line {line_no}): {message}"
-    if snippet:
-        output += f"\n{snippet}"
-    if len(output) <= max_length:
-        return output
+        header = f"{prefix} (line {line_no}): {message}"
+
+    if not snippet:
+        if len(header) <= max_length:
+            return header
+        if max_length <= 3:
+            return header[:max_length]
+        return header[: max_length - 3] + "..."
+
+    # Normalize snippet content by stripping surrounding newlines and any existing code block fences
+    snippet_content = snippet.strip("\r\n")
+    if snippet_content.strip().startswith("```") and snippet_content.strip().endswith("```"):
+        fenced_lines = snippet_content.strip().splitlines()
+        if len(fenced_lines) >= 2 and fenced_lines[0].startswith("```") and fenced_lines[-1].startswith("```"):
+            snippet_content = "\n".join(fenced_lines[1:-1]).strip("\r\n")
+
+    if not snippet_content:
+        if len(header) <= max_length:
+            return header
+        if max_length <= 3:
+            return header[:max_length]
+        return header[: max_length - 3] + "..."
+
+    open_fence = "\n```text\n"
+    close_fence = "\n```"
+    fence_overhead = len(open_fence) + len(close_fence)
+
+    full_output = f"{header}{open_fence}{snippet_content}{close_fence}"
+    if len(full_output) <= max_length:
+        return full_output
+
     if max_length <= 3:
-        return output[:max_length]
-    return output[: max_length - 3] + "..."
+        return full_output[:max_length]
+
+    # Check if there is enough space for header, code fence, and at least some snippet content
+    available_snippet_len = max_length - len(header) - fence_overhead
+    if available_snippet_len >= 3:
+        truncated_snippet = snippet_content[: available_snippet_len - 3] + "..."
+        return f"{header}{open_fence}{truncated_snippet}{close_fence}"
+
+    # If code block fence cannot fit cleanly with snippet, omit snippet and truncate header
+    if len(header) <= max_length:
+        return header
+    return header[: max_length - 3] + "..."
 
 
 def _format_preflight_issue(issue: PreflightIssue) -> str:
