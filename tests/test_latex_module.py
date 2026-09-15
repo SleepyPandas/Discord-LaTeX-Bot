@@ -133,6 +133,259 @@ class LatexModuleTestCase(unittest.TestCase):
             "LaTeX syntax error: Extra alignment tab has been changed to \\cr.",
         )
 
+    def test_find_latex_error_unwraps_79_column_wrapped_latex_error(self):
+        line_79 = "main.tex:10: LaTeX Error: Long error statement that hard-wraps at column sevent"
+        self.assertEqual(len(line_79), 79)
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            f"{line_79}\n"
+            "y nine.\n\n"
+            "See the LaTeX manual or LaTeX Companion for explanation."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 10): Long error statement that hard-wraps at column seventy nine.",
+        )
+
+    def test_find_latex_error_recovers_multiline_cut_off_message(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:10: LaTeX Error: There's no line here to\n"
+            "end.\n\n"
+            "See the LaTeX manual or LaTeX Companion for explanation."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 10): There's no line here to end.",
+        )
+
+    def test_find_latex_error_unwraps_79_column_wrapped_package_error(self):
+        line_79 = "main.tex:3: Package mypkg Error: Here is a very long error message that will de"
+        self.assertEqual(len(line_79), 79)
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            f"{line_79}\n"
+            "finitely exceed seventy nine characters and wrap onto the next line.\n\n"
+            "See the mypkg package documentation for explanation."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 3): [mypkg] Here is a very long error message that will definitely exceed seventy nine characters and wrap onto the next line.",
+        )
+
+    def test_find_latex_error_handles_package_continuation_lines(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "Package hyperref Error: Wrong DVI mode driver option 'dvips',\n"
+            "(hyperref)                because pdfTeX or LuaTeX is running.\n\n"
+            "See the hyperref package documentation for explanation."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error: [hyperref] Wrong DVI mode driver option 'dvips', because pdfTeX or LuaTeX is running.",
+        )
+
+    def test_find_latex_error_unwraps_79_column_wrapped_environment_error(self):
+        line_79 = "main.tex:3: LaTeX Error: Environment undefinedenvironmentwithaveryveryveryveryv"
+        self.assertEqual(len(line_79), 79)
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            f"{line_79}\n"
+            "eryveryveryveryveryveryveryverylongname undefined.\n\n"
+            "See the LaTeX manual or LaTeX Companion for explanation."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertIn(
+            "`undefinedenvironmentwithaveryveryveryveryveryveryveryveryveryveryveryverylongname` is unavailable",
+            result,
+        )
+
+    def test_find_latex_error_unwraps_79_column_wrapped_file_path(self):
+        line_79 = "/var/very/long/temporary/latex/bot/working/dir/build/session/2026/09/14/main.te"
+        self.assertEqual(len(line_79), 79)
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            f"{line_79}\n"
+            "x:15: LaTeX Error: Missing delimiter.\n"
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 15): Missing delimiter.",
+        )
+
+    def test_find_latex_error_handles_multiline_bang_message(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "! Something strange happened\n"
+            "and continued on the next line."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error: Something strange happened and continued on the next line.",
+        )
+
+    def test_unwrap_tex_log_preserves_non_wrapped_boundaries(self):
+        mem_line = " 35i,0n,38p,202b,36s stack positions out of 10000i,1000n,20000p,200000b,200000s"
+        self.assertEqual(len(mem_line), 79)
+        log = (
+            f"{mem_line}\n"
+            "main.tex:3:  ==> Fatal error occurred, no output PDF file produced!"
+        )
+
+        unwrapped = latex_module._unwrap_tex_log(log)
+        self.assertEqual(unwrapped, log)
+
+    def test_unwrap_tex_log_handles_crlf_without_embedding_carriage_return(self):
+        line_79 = "a" * 79
+        log = f"{line_79}\r\ncontinuation line\r\n"
+        unwrapped = latex_module._unwrap_tex_log(log)
+        self.assertNotIn("\r", unwrapped)
+        self.assertEqual(unwrapped, f"{line_79}continuation line\n")
+
+    def test_unwrap_tex_log_handles_crlf_80_col_lines(self):
+        line_80 = "b" * 80
+        log = f"{line_80}\r\ncontinuation\r\n"
+        unwrapped = latex_module._unwrap_tex_log(log)
+        self.assertEqual(unwrapped, f"{line_80}continuation\n")
+
+    def test_unwrap_tex_log_unwraps_wrapped_paths_ending_in_slash(self):
+        path_prefix = "/very/long/temporary/path/to/project/directory/nested/deep/inside/subfolder/"
+        self.assertIn(len(path_prefix), (79, 80) if len(path_prefix) in (79, 80) else (len(path_prefix),))
+        path_prefix = path_prefix.ljust(79, "a") if len(path_prefix) < 79 else path_prefix[:79]
+        self.assertEqual(len(path_prefix), 79)
+        log = f"{path_prefix}\nmain.tex:12: LaTeX Error: Some error message."
+        unwrapped = latex_module._unwrap_tex_log(log)
+        self.assertNotIn("\nmain.tex:12:", unwrapped)
+        self.assertIn(f"{path_prefix}main.tex:12:", unwrapped)
+
+    def test_find_latex_error_strips_latex_generic_continuation_markers(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:3: LaTeX Error: First line of error\n"
+            "(LaTeX)Second line of error.\n\n"
+            "Type  H <return>  for immediate help."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 3): First line of error Second line of error.",
+        )
+
+    def test_find_latex_error_handles_class_errors(self):
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "main.tex:5: Class standalone Error: Margin is too small for page.\n\n"
+            "Type  H <return>  for immediate help."
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 5): [standalone] Margin is too small for page.",
+        )
+
+    def test_find_latex_error_handles_file_line_error_standard_tex_messages(self):
+        cases = [
+            ("main.tex:3: Dimension too large.\nl.3 ...", "LaTeX syntax error (line 3): Dimension too large."),
+            ("main.tex:4: Too many }'s.\nl.4 }", "LaTeX syntax error (line 4): Too many }'s."),
+            (
+                "main.tex:7: Extra alignment tab has been changed to \\cr.\nl.7 &",
+                "LaTeX syntax error (line 7): Extra alignment tab has been changed to \\cr.",
+            ),
+        ]
+        for log_snippet, expected in cases:
+            compiler_log = f"Compilation failed with error logs:\n{log_snippet}"
+            result = latex_module.find_latex_error(compiler_log)
+            self.assertEqual(result, expected)
+
+    def test_find_latex_error_handles_wrapped_file_line_error_standard_tex_messages(self):
+        line_79 = r"main.tex:3: Incomplete \iffalse; all text was ignored after line 50. Some extra"
+        self.assertEqual(len(line_79), 79)
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            f"{line_79}\n"
+            " details on next line.\n"
+        )
+
+        result = latex_module.find_latex_error(compiler_log)
+
+        self.assertEqual(
+            result,
+            "LaTeX syntax error (line 3): Incomplete \\iffalse; all text was ignored after line 50. Some extra details on next line.",
+        )
+
+    def test_extract_generated_line_number_falls_back_to_l_line(self):
+        log = (
+            "! LaTeX Error: Something went wrong.\n"
+            "...\n"
+            "l.42 \\end{document}\n"
+        )
+        line_no = latex_module._extract_generated_line_number(log)
+        self.assertEqual(line_no, 42)
+
+    def test_extract_generated_line_number_handles_paths_with_spaces_and_quotes(self):
+        log_windows = r"C:\Users\John Doe\AppData\Local\Temp\main.tex: 22: LaTeX Error: Problem"
+        log_quoted = '"/tmp/path with spaces/main.tex": 33: LaTeX Error: Problem'
+        self.assertEqual(latex_module._extract_generated_line_number(log_windows), 22)
+        self.assertEqual(latex_module._extract_generated_line_number(log_quoted), 33)
+
+    def test_extract_best_command_recovers_ellipsis_truncated_command(self):
+        log = (
+            "main.tex:3: Undefined control sequence.\n"
+            "l.3 ...eryveryveryveryverylongundefinedcommandname\n"
+        )
+        source = r"\frac{1}{\thisisaveryveryveryveryverylongundefinedcommandname}"
+        rr = latex_module.RenderRequest(
+            source_expr=source,
+            latex_code="",
+            transparent=False,
+            render_dpi=300,
+            input_kind="inline",
+            generated_to_user_line={3: 1},
+        )
+        cmd = latex_module._extract_best_command(log, rr, 1, 3)
+        self.assertEqual(cmd, r"\thisisaveryveryveryveryverylongundefinedcommandname")
+
+    def test_extract_best_command_recovers_trailing_ellipsis_command(self):
+        log = (
+            "main.tex:3: Undefined control sequence.\n"
+            "l.3 \\thisisaveryveryveryveryverylongundefined...\n"
+        )
+        source = r"\frac{1}{\thisisaveryveryveryveryverylongundefinedcommandname}"
+        rr = latex_module.RenderRequest(
+            source_expr=source,
+            latex_code="",
+            transparent=False,
+            render_dpi=300,
+            input_kind="inline",
+            generated_to_user_line={3: 1},
+        )
+        cmd = latex_module._extract_best_command(log, rr, 1, 3)
+        self.assertEqual(cmd, r"\thisisaveryveryveryveryverylongundefinedcommandname")
+
     def test_find_latex_error_uses_preflight_issue_as_fallback(self):
         render_request = latex_module.RenderRequest(
             source_expr=r"\left( x+1",

@@ -202,7 +202,10 @@ class LatexCompilerTestCase(unittest.TestCase):
         command = SuccessfulProcess.instances[0].command
         self.assertIn("-halt-on-error", command)
         self.assertIn("-no-shell-escape", command)
+        self.assertIn("-max-print-line=10000", command)
         self.assertTrue(any(arg.startswith("-output-directory=") for arg in command))
+        process_env = SuccessfulProcess.instances[0].kwargs.get("env", {})
+        self.assertEqual(process_env.get("max_print_line"), "10000")
 
     def test_compile_raises_compilation_error_with_log_output(self):
         with tempfile.TemporaryDirectory() as compile_root:
