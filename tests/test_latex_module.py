@@ -990,6 +990,185 @@ class LatexModuleTestCase(unittest.TestCase):
             self.assertEqual(compile_kwargs["compiler"], "pdflatex")
             self.assertEqual(compile_kwargs["dpi"], 300)
 
+    def test_format_source_snippet_multiline_context(self):
+        expr = "line 1\nline 2\nline 3\nline 4\nline 5"
+        # 3-line context around line 3: lines 2, 3, 4
+        snippet = latex_module._format_source_snippet(expr, line_no=3, context_lines=1)
+        expected = "  2 | line 2\n> 3 | line 3\n  4 | line 4"
+        self.assertEqual(snippet, expected)
+
+    def test_format_source_snippet_single_line_context(self):
+        expr = "line 1\nline 2\nline 3\nline 4\nline 5"
+        # context_lines=0 should produce a single line snippet
+        snippet = latex_module._format_source_snippet(expr, line_no=3, context_lines=0)
+        self.assertEqual(snippet, "> 3 | line 3")
+
+    def test_format_source_snippet_boundary_first_line(self):
+        expr = "first line\nsecond line\nthird line"
+        # At line 1, there is no line before; should show lines 1 and 2
+        snippet = latex_module._format_source_snippet(expr, line_no=1, context_lines=1)
+        expected = "> 1 | first line\n  2 | second line"
+        self.assertEqual(snippet, expected)
+
+    def test_format_source_snippet_boundary_last_line(self):
+        expr = "first line\nsecond line\nthird line"
+        # At last line (3), there is no line after; should show lines 2 and 3
+        snippet = latex_module._format_source_snippet(expr, line_no=3, context_lines=1)
+        expected = "  2 | second line\n> 3 | third line"
+        self.assertEqual(snippet, expected)
+
+    def test_format_source_snippet_preserves_empty_target_line(self):
+        # Reproduce the user's issue: line 10 is an empty line following \\
+        lines = [
+            r"1 &= 1 \\",
+            r"2 &= 2 \\",
+            r"3 &= 3 \\",
+            r"4 &= 4 \\",
+            r"5 &= 5 \\",
+            r"6 &= 6 \\",
+            r"7 &= 7 \\",
+            r"8 &= 8 \\",
+            r"9 &= 9 \\",
+            "",
+            r"11 &= 11",
+        ]
+        expr = "\n".join(lines)
+        snippet = latex_module._format_source_snippet(expr, line_no=10, context_lines=1)
+        self.assertIsNotNone(snippet)
+        expected = "   9 | 9 &= 9 \\\\\n> 10 |\n  11 | 11 &= 11"
+        self.assertEqual(snippet, expected)
+
+    def test_format_source_snippet_preserves_empty_context_lines(self):
+        # Empty lines before and after target line should be preserved
+        expr = "line 1\n\nline 3\n\nline 5"
+        snippet = latex_module._format_source_snippet(expr, line_no=3, context_lines=1)
+        expected = "  2 |\n> 3 | line 3\n  4 |"
+        self.assertEqual(snippet, expected)
+
+    def test_format_source_snippet_all_empty_lines(self):
+        expr = "\n\n\n"
+        snippet = latex_module._format_source_snippet(expr, line_no=2, context_lines=1)
+        expected = "  1 |\n> 2 |\n  3 |"
+        self.assertEqual(snippet, expected)
+
+    def test_format_source_snippet_single_line_expression(self):
+        expr = r"\frac{1}{2"
+        # By default, single-line expressions return None to preserve compact formatting
+        self.assertIsNone(latex_module._format_source_snippet(expr, line_no=1))
+        # With require_multiline=False, it formats the single line
+        snippet = latex_module._format_source_snippet(
+            expr, line_no=1, require_multiline=False
+        )
+        self.assertEqual(snippet, r"> 1 | \frac{1}{2")
+
+    def test_format_source_snippet_invalid_inputs_and_bounds(self):
+        expr = "line 1\nline 2\nline 3"
+        self.assertIsNone(latex_module._format_source_snippet(None, 1))
+        self.assertIsNone(latex_module._format_source_snippet("", 1))
+        self.assertIsNone(latex_module._format_source_snippet(expr, None))
+        self.assertIsNone(latex_module._format_source_snippet(expr, line_no=0))
+        self.assertIsNone(latex_module._format_source_snippet(expr, line_no=-1))
+        self.assertIsNone(latex_module._format_source_snippet(expr, line_no=4))
+
+    def test_format_source_snippet_truncates_long_lines(self):
+        long_line = "a" * 120
+        expr = f"short line 1\n{long_line}\nshort line 3"
+        snippet = latex_module._format_source_snippet(
+            expr, line_no=2, context_lines=1, max_line_length=50
+        )
+        self.assertIsNotNone(snippet)
+        expected_truncated = "a" * 47 + "..."
+        self.assertIn(f"> 2 | {expected_truncated}", snippet)
+
+    def test_format_source_snippet_respects_max_total_length(self):
+        expr = "line 1\nline 2\nline 3\nline 4\nline 5"
+        # With context_lines=2, 5 lines would normally be formatted.
+        # Restrict max_total_length so outer lines are dropped.
+        snippet = latex_module._format_source_snippet(
+            expr, line_no=3, context_lines=2, max_total_length=35
+        )
+        self.assertIsNotNone(snippet)
+        self.assertLessEqual(len(snippet), 35)
+        self.assertIn("> 3 | line 3", snippet)
+
+    def test_format_user_error_with_snippet(self):
+        snippet = "  2 | line 2\n> 3 | line 3\n  4 | line 4"
+        error_msg = latex_module._format_user_error(
+            "LaTeX syntax error",
+            "Something failed.",
+            line_no=3,
+            snippet=snippet,
+        )
+        expected = (
+            "LaTeX syntax error (line 3): Something failed.\n"
+            "  2 | line 2\n"
+            "> 3 | line 3\n"
+            "  4 | line 4"
+        )
+        self.assertEqual(error_msg, expected)
+
+    def test_format_user_error_respects_max_length(self):
+        long_message = "x" * 600
+        error_msg = latex_module._format_user_error(
+            "LaTeX syntax error",
+            long_message,
+            line_no=1,
+        )
+        self.assertLessEqual(len(error_msg), 500)
+        self.assertTrue(error_msg.endswith("..."))
+
+    def test_format_source_snippet_single_line_with_trailing_newline_returns_none(self):
+        # Single-line expressions with trailing newline characters (\n or \r\n)
+        # must still return None when require_multiline=True
+        expr_lf = r"\frac{1}{2}" + "\n"
+        self.assertIsNone(latex_module._format_source_snippet(expr_lf, line_no=1))
+
+        expr_crlf = r"\frac{1}{2}" + "\r\n"
+        self.assertIsNone(latex_module._format_source_snippet(expr_crlf, line_no=1))
+
+    def test_format_source_snippet_cr_newlines(self):
+        # Multiline expression using classic CR line breaks
+        expr = "line 1\rline 2\rline 3"
+        snippet = latex_module._format_source_snippet(expr, line_no=2, context_lines=1)
+        expected = "  1 | line 1\n> 2 | line 2\n  3 | line 3"
+        self.assertEqual(snippet, expected)
+
+    def test_format_source_snippet_small_limits_do_not_expand(self):
+        # When max_line_length <= 3 or max_total_length <= 3, ensure string is clamped without expanding
+        expr = "line 1\nline 2"
+        snippet = latex_module._format_source_snippet(
+            expr, line_no=1, context_lines=0, max_line_length=2, max_total_length=20
+        )
+        self.assertIsNotNone(snippet)
+        # The content on line 1 ("line 1") truncated to 2 chars should be "li"
+        self.assertIn("> 1 | li", snippet)
+
+        snippet_tiny_total = latex_module._format_source_snippet(
+            expr, line_no=1, context_lines=0, max_total_length=2
+        )
+        self.assertIsNotNone(snippet_tiny_total)
+        self.assertLessEqual(len(snippet_tiny_total), 2)
+
+    def test_format_source_snippet_invalid_line_no_types(self):
+        expr = "line 1\nline 2"
+        self.assertIsNone(latex_module._format_source_snippet(expr, line_no=1.5))
+        self.assertIsNone(latex_module._format_source_snippet(expr, line_no=True))
+        self.assertIsNone(latex_module._format_source_snippet(expr, line_no=False))
+        self.assertIsNone(latex_module._format_source_snippet(expr, line_no="1"))
+
+    def test_format_user_error_small_max_length_does_not_expand(self):
+        # When max_length <= 3, ensure output does not expand due to negative slice indices
+        error_msg = latex_module._format_user_error("Err", "Message", max_length=2)
+        self.assertLessEqual(len(error_msg), 2)
+
+    def test_format_user_error_invalid_line_no_types(self):
+        # When line_no is a boolean or float, format without line number
+        error_msg = latex_module._format_user_error("LaTeX syntax error", "Failed.", line_no=True)
+        self.assertEqual(error_msg, "LaTeX syntax error: Failed.")
+
+        error_msg = latex_module._format_user_error("LaTeX syntax error", "Failed.", line_no=1.5)
+        self.assertEqual(error_msg, "LaTeX syntax error: Failed.")
+
 
 if __name__ == "__main__":
     unittest.main()
