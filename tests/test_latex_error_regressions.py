@@ -149,6 +149,47 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
         self.assertIsInstance(result, str)
         self.assertIn(r"`\Lamda` is undefined", result)
         self.assertNotIn(r"`\mu`", result)
+    def test_real_compiler_no_line_to_end_error_not_truncated(self):
+        expr = "\\begin{document}\n\\\\\n\\end{document}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_no_line_to_end")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn("There's no line here to end.", result)
+        self.assertNotIn("There's no line here to.", result)
+
+    def test_real_compiler_long_environment_name_error_not_truncated(self):
+        env = "undefinedenvironmentwithaveryveryveryveryveryveryveryveryveryveryveryverylongname"
+        expr = f"\\begin{{document}}\n\\begin{{{env}}}\n\\end{{{env}}}\n\\end{{document}}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_long_env")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn(env, result)
+        self.assertIn("is unavailable in this renderer", result)
+
+    def test_real_compiler_standard_tex_error_extracted(self):
+        expr = "\\begin{document}\n\\vspace{abc}\n\\end{document}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_standard_tex_error")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn("Missing number, treated as zero.", result)
+        self.assertNotIn("incomplete or unsupported in this renderer", result)
+
+    def test_real_compiler_long_undefined_command_extracted_not_truncated(self):
+        long_cmd = "\\thisisaveryveryveryveryveryveryveryveryveryverylongundefinedcommandname"
+        expr = f"\\frac{{1}}{{{long_cmd}}}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_long_cmd")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn(long_cmd, result)
+        self.assertIn("is undefined.", result)
 
 
 if __name__ == "__main__":

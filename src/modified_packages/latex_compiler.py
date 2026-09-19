@@ -137,14 +137,21 @@ class LatexCompiler:
             "-halt-on-error",
             "-file-line-error",
             "-no-shell-escape",
+        ]
+        if compiler in ("pdflatex", "latex", "pdftex", "tex", "xelatex", "lualatex"):
+            command.append("-max-print-line=10000")
+        command.extend([
             f"-output-directory={working_dir}",
             _MAIN_TEX_FILENAME,
-        ]
+        ])
+        popen_env = os.environ.copy()
+        popen_env["max_print_line"] = "10000"
         popen_kwargs = {
             "cwd": str(working_dir),
             "stdout": subprocess.PIPE,
             "stderr": subprocess.PIPE,
             "text": True,
+            "env": popen_env,
         }
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = getattr(

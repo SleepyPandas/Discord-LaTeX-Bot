@@ -24,7 +24,7 @@ _RAW_TIKZ_BODY_CMD_RE = re.compile(
     r"\\(?:draw|node|path|coordinate|filldraw|shade|fill|clip|scope|foreach)\b"
 )
 _TRUNCATED_COMPLEX_DOC_ERROR_RE = re.compile(
-    r"file ended while scanning use of\s+\\end\b",
+    r"file\s+ended\s+while\s+scanning\s+use\s+of\s+\\end\b",
     re.IGNORECASE,
 )
 _COMMAND_TOKEN_RE = re.compile(r"\\+[A-Za-z@]+")
@@ -843,6 +843,99 @@ def _coerce_png_bytes(png_data: list[bytes] | bytes, output_file: str) -> bytes:
     raise TypeError("png_data is neither a list nor bytes.")
 
 
+_LOG_BOUNDARY_PREFIXES = (
+    "! ",
+    "==> Fatal error",
+    "Type  H <return>",
+    "See the ",
+    "Transcript written on",
+    "Output written on",
+    "Here is how much of TeX's memory you used:",
+)
+_SECTION_HEADERS = ("[stdout]", "[stderr]", "[main.log]")
+_FILE_LINE_ERROR_START_RE = re.compile(
+    r'^(?:[A-Za-z]:[^\r\n:]*\.tex|\"[^\"]+\.tex\"|[^\r\n:]*\.tex):\s*\d+:'
+)
+
+
+def _unwrap_tex_log(log_text: str) -> str:
+    """Unwrap hard-wrapped lines in TeX compilation logs (default 79/80 columns)."""
+    log_text = log_text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = log_text.split("\n")
+    unwrapped_lines: list[str] = []
+    i = 0
+    num_lines = len(lines)
+
+    while i < num_lines:
+        current_line = lines[i]
+
+        while len(lines[i]) in (79, 80) and (i + 1) < num_lines:
+            next_line = lines[i + 1]
+
+            if not next_line:
+                break
+
+            if any(next_line.startswith(header) for header in _SECTION_HEADERS):
+                break
+
+            if (
+                any(next_line.startswith(prefix) for prefix in _LOG_BOUNDARY_PREFIXES)
+                or re.match(r"^l\.\d+(?:\s+|$)", next_line)
+                or re.match(r"^<(?:argument|recently read|inserted text|to be read again)>", next_line)
+            ):
+                break
+
+            if _FILE_LINE_ERROR_START_RE.match(next_line):
+                if not (
+                    current_line.endswith(("/", "\\"))
+                    or (("/" in current_line or "\\" in current_line) and " " not in current_line)
+                ):
+                    break
+
+            current_line = current_line + next_line
+            i += 1
+
+        unwrapped_lines.append(current_line)
+        i += 1
+
+    return "\n".join(unwrapped_lines)
+
+
+def _collect_error_message(first_line: str, remainder_text: str, pkg_name: str | None = None) -> str:
+    """Collect full error message across continuation lines until a log boundary."""
+    message_parts = [first_line.strip()]
+
+    if remainder_text.startswith("\r\n"):
+        remainder_text = remainder_text[2:]
+    elif remainder_text.startswith(("\r", "\n")):
+        remainder_text = remainder_text[1:]
+
+    for line in remainder_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            break
+
+        if (
+            any(stripped.startswith(prefix) for prefix in _LOG_BOUNDARY_PREFIXES)
+            or _FILE_LINE_ERROR_START_RE.match(stripped)
+            or re.match(r"^l\.\d+(?:\s+|$)", stripped)
+            or re.match(r"^<(?:argument|recently read|inserted text|to be read again)>", stripped)
+            or re.match(r"^Your command was ignored\.", stripped)
+            or any(stripped.startswith(header) for header in _SECTION_HEADERS)
+            or re.match(r"^\s*\.\.\.\s*$", stripped)
+        ):
+            break
+
+        if pkg_name and re.match(rf"^\({re.escape(pkg_name)}\)\s*", stripped):
+            stripped = re.sub(rf"^\({re.escape(pkg_name)}\)\s*", "", stripped)
+        elif re.match(r"^\(LaTeX\)\s*", stripped):
+            stripped = re.sub(r"^\(LaTeX\)\s*", "", stripped)
+
+        message_parts.append(stripped)
+
+    return " ".join(part for part in message_parts if part)
+
+
 def _normalize_error_log(error_log: str | Exception | bytes) -> str:
     """Normalize mixed error payloads into plain newline-separated log text."""
     if isinstance(error_log, Exception):
@@ -859,7 +952,8 @@ def _normalize_error_log(error_log: str | Exception | bytes) -> str:
     if _COMPILER_LOG_PREFIX in error_log:
         error_log = error_log.split(_COMPILER_LOG_PREFIX, maxsplit=1)[1]
 
-    return error_log.strip()
+    unwrapped = _unwrap_tex_log(error_log)
+    return unwrapped.strip()
 
 
 def _match_known_compile_error(log_text: str) -> str:
@@ -898,8 +992,16 @@ def _match_known_compile_error(log_text: str) -> str:
 
 
 def _extract_generated_line_number(log_text: str) -> int | None:
-    line_match = re.search(r"[^\s:]+\.tex:(\d+):", log_text)
-    return int(line_match.group(1)) if line_match else None
+    line_match = re.search(
+        r'(?:[A-Za-z]:[^\r\n:]*\.tex|\"[^\"]+\.tex\"|[^\r\n:]*\.tex):\s*(\d+):',
+        log_text,
+    )
+    if line_match:
+        return int(line_match.group(1))
+    l_match = re.search(r"(?m)^l\.(\d+)\b", log_text)
+    if l_match:
+        return int(l_match.group(1))
+    return None
 
 
 def _map_generated_line_number(
@@ -936,15 +1038,51 @@ _extract_command_from_snippet = _extract_last_command_from_snippet
 def _extract_command_from_log_context(log_text: str) -> str | None:
     """Extract undefined command from TeX error context like <argument> or <recently read>."""
     arg_matches = re.finditer(
-        r"(?:<argument>|<recently read>)\s*(.+?)(?=\r?\n\s*(?:l\.|\<|\Z)|$)",
+        r"(?:<argument>|<recently read>|<to be read again>|<inserted text>)\s*(.+?)(?=\r?\n\s*(?:l\.|\<|\Z)|$)",
         log_text,
         re.DOTALL,
     )
     for match in arg_matches:
-        first_line = match.group(1).splitlines()[0]
-        cmd = _extract_last_command_from_snippet(first_line)
-        if cmd:
-            return cmd
+        for line in match.group(1).splitlines():
+            cmd = _extract_last_command_from_snippet(line)
+            if cmd:
+                return cmd
+    return None
+
+
+def _resolve_truncated_command_from_source(
+    snippet_line: str,
+    render_request: RenderRequest | None,
+    user_line_no: int | None,
+) -> str | None:
+    """Recover a command name when TeX snippet output truncates it with an ellipsis."""
+    if render_request is None or not snippet_line:
+        return None
+    source_line = _extract_source_line(render_request.source_expr, user_line_no)
+    candidates = [
+        _normalize_command_name(match.group(0))
+        for match in _COMMAND_TOKEN_RE.finditer(source_line)
+    ]
+    valid_candidates = [c for c in candidates if c and c not in _IGNORE_WRAPPER_COMMANDS]
+    if not valid_candidates:
+        return None
+
+    # Check for leading ellipsis: ...suffix
+    leading_match = re.search(r"\.{3}([A-Za-z@]+)", snippet_line)
+    if leading_match:
+        suffix = leading_match.group(1)
+        matches = [c for c in valid_candidates if c.lstrip("\\").endswith(suffix)]
+        if len(matches) == 1:
+            return matches[0]
+
+    # Check for trailing ellipsis: \prefix...
+    trailing_match = re.search(r"\\([A-Za-z@]+)\.{3}", snippet_line)
+    if trailing_match:
+        prefix = trailing_match.group(1)
+        matches = [c for c in valid_candidates if c.lstrip("\\").startswith(prefix)]
+        if len(matches) == 1:
+            return matches[0]
+
     return None
 
 
@@ -971,6 +1109,9 @@ def _extract_best_command(
     # 2. Check the compiler snippet line l.<generated_line_no>
     snippet_line = _find_snippet_line_for_generated_line(log_text, generated_line_no)
     if snippet_line:
+        resolved = _resolve_truncated_command_from_source(snippet_line, render_request, user_line_no)
+        if resolved:
+            return resolved
         cmd = _extract_last_command_from_snippet(snippet_line)
         if cmd:
             return cmd
@@ -978,6 +1119,9 @@ def _extract_best_command(
     # 3. Check any l.<line> line in log_text
     any_line_match = re.search(r"(?m)^l\.(\d+)\s+(.*)$", log_text)
     if any_line_match:
+        resolved = _resolve_truncated_command_from_source(any_line_match.group(2), render_request, user_line_no)
+        if resolved:
+            return resolved
         cmd = _extract_last_command_from_snippet(any_line_match.group(2))
         if cmd:
             return cmd
@@ -1031,7 +1175,7 @@ def _classify_compile_error(
     )
 
     file_ended_match = re.search(
-        r"file ended while scanning use of\s+(\\[A-Za-z@]+)",
+        r"file\s+ended\s+while\s+scanning\s+use\s+of\s+(\\[A-Za-z@]+)",
         log_text,
         re.IGNORECASE,
     )
@@ -1056,7 +1200,7 @@ def _classify_compile_error(
             snippet=snippet,
         )
 
-    if "missing } inserted" in lowered:
+    if re.search(r"missing\s*\}\s*inserted", lowered):
         command = _extract_best_command(
             log_text,
             render_request,
@@ -1070,7 +1214,7 @@ def _classify_compile_error(
             snippet=snippet,
         )
 
-    if "missing $ inserted" in lowered:
+    if re.search(r"missing\s*\$\s*inserted", lowered):
         return _format_user_error(
             "LaTeX syntax error",
             "Missing a math delimiter like `$...$` or `\\[...\\]`.",
@@ -1078,7 +1222,7 @@ def _classify_compile_error(
             snippet=snippet,
         )
 
-    if "undefined control sequence" in lowered:
+    if re.search(r"undefined\s+control\s+sequence", lowered):
         command = _extract_best_command(
             log_text,
             render_request,
@@ -1105,12 +1249,15 @@ def _classify_compile_error(
         )
 
     package_error_match = re.search(
-        r"(?:[^\s:]+\.tex:\d+:\s*)?Package\s+([A-Za-z0-9_-]+)\s+Error:\s*(.+)",
+        r"(?:(?:\S+\.tex|\"[^\"]+\.tex\"):\s*\d+:\s*)?(?:!\s*)?(?:Package|Class|Module)\s+([A-Za-z0-9_-]+)\s+Error:\s*(.*)",
         log_text,
     )
     if package_error_match:
         pkg_name = package_error_match.group(1).strip()
-        sanitized_message = re.sub(r"\s+", " ", package_error_match.group(2)).strip().rstrip(".")
+        first_line = package_error_match.group(2)
+        remainder = log_text[package_error_match.end():]
+        full_message = _collect_error_message(first_line, remainder, pkg_name=pkg_name)
+        sanitized_message = re.sub(r"\s+", " ", full_message).strip().rstrip(".")
         return _format_user_error(
             "LaTeX syntax error",
             f"[{pkg_name}] {sanitized_message}.",
@@ -1118,9 +1265,12 @@ def _classify_compile_error(
             snippet=snippet,
         )
 
-    latex_error_match = re.search(r"LaTeX Error:\s*(.+)", log_text)
+    latex_error_match = re.search(r"LaTeX Error:\s*(.*)", log_text)
     if latex_error_match:
-        sanitized_message = re.sub(r"\s+", " ", latex_error_match.group(1)).strip().rstrip(".")
+        first_line = latex_error_match.group(1)
+        remainder = log_text[latex_error_match.end():]
+        full_message = _collect_error_message(first_line, remainder, pkg_name="LaTeX")
+        sanitized_message = re.sub(r"\s+", " ", full_message).strip().rstrip(".")
         return _format_user_error(
             "LaTeX syntax error",
             sanitized_message + ".",
@@ -1128,9 +1278,15 @@ def _classify_compile_error(
             snippet=snippet,
         )
 
-    bang_match = re.search(r"(?m)^!\s+(.+)$", log_text)
-    if bang_match:
-        sanitized_message = re.sub(r"\s+", " ", bang_match.group(1)).strip().rstrip(".")
+    generic_error_match = re.search(
+        r"(?m)^(?:!\s*|(?:[A-Za-z]:[^\r\n:]*\.tex|\"[^\"]+\.tex\"|[^\r\n:]*\.tex):\s*\d+:\s*(?:!\s*)?)(.+)$",
+        log_text,
+    )
+    if generic_error_match:
+        first_line = generic_error_match.group(1)
+        remainder = log_text[generic_error_match.end():]
+        full_message = _collect_error_message(first_line, remainder)
+        sanitized_message = re.sub(r"\s+", " ", full_message).strip().rstrip(".")
         if sanitized_message and not any(
             token in sanitized_message.lower()
             for token in ("fatal error", "emergency stop", "runaway argument")
