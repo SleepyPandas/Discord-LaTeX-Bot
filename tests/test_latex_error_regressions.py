@@ -140,6 +140,16 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
         self.assertIn("`\\badcmd` is undefined.", result)
         self.assertIn("> 3 | \\badcmd &= 2", result)
 
+    def test_undefined_command_with_nu_in_expression_identifies_correct_command(self):
+        expr = r"R_{\mu \nu} - \frac{1}{2}Rg_{\mu \nu} + \Lamda g_{\mu \nu} = \kappa T_{\mu \nu}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_nu_typo")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn(r"`\Lamda` is undefined", result)
+        self.assertNotIn(r"`\mu`", result)
+
 
 if __name__ == "__main__":
     unittest.main()

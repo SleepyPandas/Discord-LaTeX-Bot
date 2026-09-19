@@ -852,7 +852,8 @@ def _normalize_error_log(error_log: str | Exception | bytes) -> str:
     elif not isinstance(error_log, str):
         error_log = str(error_log)
 
-    error_log = error_log.replace("\\r\\n", "\n").replace("\\n", "\n")
+    # Normalize line endings without unescaping literal \n, which would corrupt
+    # LaTeX commands starting with \n (such as \nu, \nabla, \neq, \newcommand).
     error_log = error_log.replace("\r\n", "\n").replace("\r", "\n")
 
     if _COMPILER_LOG_PREFIX in error_log:
