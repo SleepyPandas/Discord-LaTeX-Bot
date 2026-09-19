@@ -233,11 +233,11 @@ def _normalize_command_name(command: str | None) -> str | None:
 
 
 def _format_missing_closing_brace_message(command: str | None) -> str:
+    default_msg = "Missing `}` to close this group or command argument."
     normalized = _normalize_command_name(command)
-    return _COMMAND_CLOSE_HINTS.get(
-        normalized,
-        "Missing `}` to close this group or command argument.",
-    )
+    if normalized:
+        return _COMMAND_CLOSE_HINTS.get(normalized, default_msg)
+    return default_msg
 
 
 def _extract_source_line(expr: str, line_no: int | None) -> str:
@@ -945,7 +945,8 @@ def _normalize_error_log(error_log: str | Exception | bytes) -> str:
     elif not isinstance(error_log, str):
         error_log = str(error_log)
 
-    error_log = error_log.replace("\\r\\n", "\n").replace("\\n", "\n")
+    # Normalize line endings without unescaping literal \n, which would corrupt
+    # LaTeX commands starting with \n (such as \nu, \nabla, \neq, \newcommand).
     error_log = error_log.replace("\r\n", "\n").replace("\r", "\n")
 
     if _COMPILER_LOG_PREFIX in error_log:

@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## [V2.5.3] [LaTeX Error Log Normalization & Type Safety Fixes] - 2026-09-19
+
+### Highlights
+
+- Fixed compiler error attribution for equations containing commands starting with `\n` (such as `\nu`, `\nabla`, `\neq`, `\newcommand`). Previously, unescaping literal `\n` in compiler logs split lines at these commands and caused preceding valid macros (e.g. `\mu`) to be falsely blamed.
+- Added type guard in `_format_missing_closing_brace_message` to prevent passing `None` as a key to dictionary lookups.
+
+### Added
+
+- Regression test in `tests/test_latex_error_regressions.py` (`test_undefined_command_with_nu_in_expression_identifies_correct_command`) for expressions containing `\nu` alongside undefined commands.
+- Unit test in `tests/test_latex_module.py` (`test_find_latex_error_preserves_commands_starting_with_backslash_n`) verifying log normalization preserves `\n` control sequences.
+
+### Changed
+
+- `src/bot.py`: Bumped `__version__` to `2.5.3`.
+- `src/latex_module.py`: Removed naive `\n` unescaping in `_normalize_error_log` while preserving standard CRLF normalization.
+- `src/latex_module.py`: Guarded `_COMMAND_CLOSE_HINTS.get()` against `None` in `_format_missing_closing_brace_message`.
+
+---
+
 ## [V2.5.2] [Varwidth Option for Standalone Document Normalization] - 2026-09-10
 
 ### Highlights

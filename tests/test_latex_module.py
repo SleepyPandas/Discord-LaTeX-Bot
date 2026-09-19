@@ -107,6 +107,20 @@ class LatexModuleTestCase(unittest.TestCase):
             "Check the command name or add the required package.",
         )
 
+    def test_find_latex_error_preserves_commands_starting_with_backslash_n(self):
+        source = r"R_{\mu \nu} - \frac{1}{2}Rg_{\mu \nu} + \Lamda g_{\mu \nu} = \kappa T_{\mu \nu}"
+        render_request = latex_module._prepare_render_request(source, 300)
+        compiler_log = (
+            "Compilation failed with error logs:\n"
+            "[main.log]\n"
+            "main.tex:9: Undefined control sequence.\n"
+            "l.9 ...\\mu \\nu} - \\frac{1}{2}Rg_{\\mu \\nu} + \\Lamda\n"
+            "                                                   g_{\\mu \\nu} = \\kappa T_{\\mu ...\n"
+        )
+        result = latex_module.find_latex_error(compiler_log, render_request=render_request)
+        self.assertIn(r"`\Lamda` is undefined", result)
+        self.assertNotIn(r"`\mu`", result)
+
     def test_find_latex_error_formats_plain_latex_error_messages(self):
         compiler_log = (
             "Compilation failed with error logs:\n"
