@@ -160,6 +160,15 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
         self.assertIn("  4 | 2 &= 2", result)
         self.assertIn("\n```", result)
 
+    def test_undefined_command_with_nu_in_expression_identifies_correct_command(self):
+        expr = r"R_{\mu \nu} - \frac{1}{2}Rg_{\mu \nu} + \Lamda g_{\mu \nu} = \kappa T_{\mu \nu}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_nu_typo")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn(r"`\Lamda` is undefined", result)
+        self.assertNotIn(r"`\mu`", result)
     def test_real_compiler_no_line_to_end_error_not_truncated(self):
         expr = "\\begin{document}\n\\\\\n\\end{document}"
         with tempfile.TemporaryDirectory() as temp_dir:
