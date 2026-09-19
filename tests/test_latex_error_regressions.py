@@ -138,7 +138,27 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
         self.assertIsInstance(result, str)
         self.assertIn("LaTeX command error (line 3):", result)
         self.assertIn("`\\badcmd` is undefined.", result)
+        # Verify 3-line context inside text code block: line before (2), target line (3), line after (4)
+        self.assertIn("```text\n", result)
+        self.assertIn("  2 | 1 &= 1 \\\\", result)
         self.assertIn("> 3 | \\badcmd &= 2", result)
+        self.assertIn("  4 | \\end{align*}", result)
+        self.assertIn("\n```", result)
+
+    def test_multiline_failure_on_empty_line_shows_context_snippet(self):
+        # Empty line following \\ causes a syntax error; verify empty line is preserved in snippet
+        expr = "\\begin{align*}\n1 &= 1 \\\\\n\n2 &= 2\n\\end{align*}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_empty_line")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn("LaTeX syntax error (line 3):", result)
+        self.assertIn("```text\n", result)
+        self.assertIn("  2 | 1 &= 1 \\\\", result)
+        self.assertIn("> 3 |", result)
+        self.assertIn("  4 | 2 &= 2", result)
+        self.assertIn("\n```", result)
 
     def test_undefined_command_with_nu_in_expression_identifies_correct_command(self):
         expr = r"R_{\mu \nu} - \frac{1}{2}Rg_{\mu \nu} + \Lamda g_{\mu \nu} = \kappa T_{\mu \nu}"
@@ -190,6 +210,24 @@ class LatexFriendlyRegressionTestCase(unittest.TestCase):
         self.assertIsInstance(result, str)
         self.assertIn(long_cmd, result)
         self.assertIn("is undefined.", result)
+
+    def test_real_compiler_snippet_with_backticks_preserves_code_block(self):
+        # When user code contains comments or text with triple backticks, the snippet codeblock must remain valid
+        triple_bt = chr(96) * 3
+        expr = f"\\begin{{align*}}\n1 &= 1 \\\\\n% {triple_bt}\n\\badcmd &= 2\n\\end{{align*}}"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_base = str(Path(temp_dir) / "failure_backticks")
+            result = latex_module.text_to_latex(expr, output_base)
+
+        self.assertIsInstance(result, str)
+        self.assertIn("LaTeX command error (line 4):", result)
+        self.assertIn("```text\n", result)
+        self.assertTrue(result.endswith("\n```"))
+        # Check that the code block has not prematurely closed
+        snippet_body = result[result.index("```text\n") + len("```text\n") : -len("\n```")]
+        self.assertNotIn(triple_bt, snippet_body)
+        self.assertIn("> 4 | \\badcmd &= 2", snippet_body)
+        self.assertIn("  5 | \\end{align*}", snippet_body)
 
 
 if __name__ == "__main__":

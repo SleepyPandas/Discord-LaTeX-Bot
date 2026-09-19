@@ -2,23 +2,32 @@
 
 All notable changes to this project are documented in this file.
 
-## [V2.5.3] [LaTeX Error Log Normalization & Type Safety Fixes] - 2026-09-19
+
+## [V2.5.3] [TeX Log Unwrapping & Multi-Line Error Context Snippets] [LaTeX Error Log Normalization & Type Safety Fixes] - 2026-09-15
 
 ### Highlights
 
+- Resolved TeX log Error log line trucation`-max-print-line=10000`, ensuring multi-line errors and truncated macro names are cleanly parsed and attributed.
+- Enhanced LaTeX compiler error reporting with formatted multi-line source snippet context, displaying surrounding lines, line numbers, error pointer (`>`), and sanitizing formatting within Discord text code blocks.
 - Fixed compiler error attribution for equations containing commands starting with `\n` (such as `\nu`, `\nabla`, `\neq`, `\newcommand`). Previously, unescaping literal `\n` in compiler logs split lines at these commands and caused preceding valid macros (e.g. `\mu`) to be falsely blamed.
 - Added type guard in `_format_missing_closing_brace_message` to prevent passing `None` as a key to dictionary lookups.
 
 ### Added
 
+- Multi-line snippet context window in `_format_source_snippet` showing the line before, error line, and line after with right-aligned line numbers.
+- TeX log unwrapping helper `_unwrap_tex_log` handling CRLF/LF line breaks.
+- Unit and compiler regression tests in `tests/test_latex_module.py` and `tests/test_latex_error_regressions.py` covering TeX log unwrapping, error attribution, context snippets, and Discord code block formatting.
 - Regression test in `tests/test_latex_error_regressions.py` (`test_undefined_command_with_nu_in_expression_identifies_correct_command`) for expressions containing `\nu` alongside undefined commands.
 - Unit test in `tests/test_latex_module.py` (`test_find_latex_error_preserves_commands_starting_with_backslash_n`) verifying log normalization preserves `\n` control sequences.
 
 ### Changed
 
 - `src/bot.py`: Bumped `__version__` to `2.5.3`.
+- `src/latex_module.py`: Formatted error context snippets in Discord code blocks, added backtick sanitization, and safeguarded boundary truncation.
+- `src/modified_packages/latex_compiler.py`: Added `-max-print-line=10000` compiler argument and `max_print_line` environment variable to prevent compiler-side log line wrapping.
 - `src/latex_module.py`: Removed naive `\n` unescaping in `_normalize_error_log` while preserving standard CRLF normalization.
 - `src/latex_module.py`: Guarded `_COMMAND_CLOSE_HINTS.get()` against `None` in `_format_missing_closing_brace_message`.
+
 
 ---
 

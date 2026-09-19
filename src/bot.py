@@ -104,7 +104,7 @@ compile_queue = CompileQueue(
 
 
 def _is_friendly_compile_error(message: str) -> bool:
-    lowered = message.lower()
+    lowered = message.strip().lower()
     return lowered.startswith(
         (
             "input too long:",
@@ -121,7 +121,11 @@ def _is_friendly_compile_error(message: str) -> bool:
 def _format_compile_error_description(message: str) -> str:
     if _is_friendly_compile_error(message):
         return message
-    return f"```yaml\n{message}\n```"
+    wrapped = f"```yaml\n{message}\n```"
+    if len(wrapped) <= 4096:
+        return wrapped
+    max_body = 4096 - len("```yaml\n\n```") - 3
+    return f"```yaml\n{message[:max_body]}...\n```"
 
 from discord.ext import commands, tasks
 from latex_module import *

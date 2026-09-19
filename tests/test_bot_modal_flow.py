@@ -320,6 +320,28 @@ class BotModalFlowTestCase(unittest.TestCase):
 
         self.assertEqual(result, message)
 
+    def test_format_compile_error_description_preserves_snippet_codeblock(self):
+        message = (
+            "LaTeX syntax error (line 3): Missing `}` to finish `\\frac{...}{...}`.\n"
+            "```text\n"
+            "  2 | line 2\n"
+            "> 3 | line 3\n"
+            "  4 | line 4\n"
+            "```"
+        )
+
+        result = self.bot._format_compile_error_description(message)
+
+        self.assertEqual(result, message)
+
+    def test_format_compile_error_description_caps_oversized_messages_at_embed_limit(self):
+        long_technical_error = "Error: " + "A" * 5000
+        result = self.bot._format_compile_error_description(long_technical_error)
+        self.assertLessEqual(len(result), 4096)
+        self.assertTrue(result.startswith("```yaml\n"))
+        self.assertTrue(result.endswith("\n```"))
+        self.assertIn("...\n```", result)
+
     def test_modal_submit_routes_to_existing_compile_handler(self):
         interaction = SimpleNamespace()
         modal = self.bot.LatexCodeModal(original_code="", dpi=300)
