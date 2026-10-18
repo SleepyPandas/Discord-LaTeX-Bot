@@ -279,7 +279,7 @@ class BotModalFlowTestCase(unittest.TestCase):
         self.bot.bot._health_runner = None
         self.bot.bot._ready = False
 
-    def test_latex_command_opens_entry_modal_with_default_dpi(self):
+    def test_latex_command_opens_entry_modal(self):
         interaction = SimpleNamespace(response=SimpleNamespace(send_modal=AsyncMock()))
 
         asyncio.run(self.bot.latex(interaction))
@@ -287,7 +287,6 @@ class BotModalFlowTestCase(unittest.TestCase):
         interaction.response.send_modal.assert_awaited_once()
         modal = interaction.response.send_modal.await_args.args[0]
         self.assertIsInstance(modal, self.bot.LatexCodeModal)
-        self.assertEqual(modal.dpi, self.bot.DEFAULT_DPI)
         self.assertEqual(modal.title, "Enter LaTeX Code")
         self.assertEqual(modal.latex_input.default, "")
         self.assertEqual(
@@ -344,7 +343,7 @@ class BotModalFlowTestCase(unittest.TestCase):
 
     def test_modal_submit_routes_to_existing_compile_handler(self):
         interaction = SimpleNamespace()
-        modal = self.bot.LatexCodeModal(original_code="", dpi=300)
+        modal = self.bot.LatexCodeModal(original_code="")
         modal.latex_input.value = r"\frac{1}{2}"
 
         with patch.object(
@@ -353,7 +352,7 @@ class BotModalFlowTestCase(unittest.TestCase):
             asyncio.run(modal.on_submit(interaction))
 
         mock_handler.assert_awaited_once_with(
-            interaction, r"\frac{1}{2}", 300, source="modal"
+            interaction, r"\frac{1}{2}", source="modal"
         )
 
     def test_latex_inline_command_routes_to_compile_handler(self):
@@ -365,11 +364,11 @@ class BotModalFlowTestCase(unittest.TestCase):
             asyncio.run(self.bot.latex_inline(interaction, r"\alpha+\beta"))
 
         mock_handler.assert_awaited_once_with(
-            interaction, r"\alpha+\beta", self.bot.DEFAULT_DPI, source="inline"
+            interaction, r"\alpha+\beta", source="inline"
         )
 
     def test_fix_code_button_opens_prefilled_modal(self):
-        view = self.bot.FixCodeView("latex \\alpha + \\beta", 350)
+        view = self.bot.FixCodeView("latex \\alpha + \\beta")
         interaction = SimpleNamespace(response=SimpleNamespace(send_modal=AsyncMock()))
 
         asyncio.run(view.fix_code_button(interaction, object()))
@@ -378,7 +377,6 @@ class BotModalFlowTestCase(unittest.TestCase):
         modal = interaction.response.send_modal.await_args.args[0]
         self.assertIsInstance(modal, self.bot.LatexCodeModal)
         self.assertEqual(modal.title, "Fix LaTeX Code")
-        self.assertEqual(modal.dpi, 350)
         self.assertEqual(modal.latex_input.default, r"latex \alpha + \beta")
 
     def test_handle_latex_compilation_records_latex_code_on_failure(self):
@@ -394,7 +392,7 @@ class BotModalFlowTestCase(unittest.TestCase):
         ), patch.object(self.bot, "_safe_record_latex_event") as mock_record:
             asyncio.run(
                 self.bot.handle_latex_compilation(
-                    interaction, r"\undefined_command", 300, source="modal"
+                    interaction, r"\undefined_command", source="modal"
                 )
             )
 
@@ -421,7 +419,7 @@ class BotModalFlowTestCase(unittest.TestCase):
         ), patch.object(self.bot, "_safe_record_latex_event") as mock_record:
             asyncio.run(
                 self.bot.handle_latex_compilation(
-                    interaction, r"\huge \int", 300, source="modal"
+                    interaction, r"\huge \int", source="modal"
                 )
             )
 
