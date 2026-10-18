@@ -954,7 +954,7 @@ class LatexModuleTestCase(unittest.TestCase):
                 mock_renderer = mock_latex2png.return_value
                 mock_renderer.compile.return_value = png_payload
 
-                result = latex_module.text_to_latex(FULL_DOCUMENT, output_base, dpi=410)
+                result = latex_module.text_to_latex(FULL_DOCUMENT, output_base, dpi=300)
 
             output_path = Path(f"{output_base}.png")
             mock_renderer.compile.assert_called_once()
@@ -968,7 +968,7 @@ class LatexModuleTestCase(unittest.TestCase):
         self.assertIn(r"\documentclass[varwidth,border=1mm]{standalone}", compile_args[0])
         self.assertIn(r"\begin{document}x\end{document}", compile_args[0])
         self.assertEqual(compile_kwargs["compiler"], "pdflatex")
-        self.assertEqual(compile_kwargs["dpi"], 410)
+        self.assertEqual(compile_kwargs["dpi"], 300)
         self.assertFalse(compile_kwargs["transparent"])
 
     def test_text_to_latex_renders_document_with_display_math_and_text(self):

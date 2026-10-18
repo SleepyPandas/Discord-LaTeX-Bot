@@ -39,6 +39,7 @@ def _read_int_env(
 
 LATEX_COMPILE_CONCURRENCY = _read_int_env("LATEX_COMPILE_CONCURRENCY", 3)
 LATEX_MAX_QUEUE = _read_int_env("LATEX_MAX_QUEUE", 20)
+DEFAULT_DPI = 300
 
 class CompileQueue:
     def __init__(self, max_concurrent: int = 3, max_queued: int = 20):
@@ -47,7 +48,7 @@ class CompileQueue:
         self._waiting = 0
         self._max_queued = max_queued
 
-    async def execute(self, loop, func, *args, notify_coro=None, timeout=15.0, user_id=None, source="slash", dpi=275):
+    async def execute(self, loop, func, *args, notify_coro=None, timeout=15.0, user_id=None, source="slash", dpi=DEFAULT_DPI):
         if self._waiting >= self._max_queued:
             _safe_record_latex_event(source=source, status="rejected", dpi=dpi, user_id=user_id, error_message="Queue full")
             if notify_coro:
@@ -418,8 +419,6 @@ async def on_ready():
 
 # ===== UI Components & Helpers =====
 
-
-DEFAULT_DPI = 300
 DISCORD_MODAL_LATEX_INPUT_CHARS = 4000
 
 
@@ -436,24 +435,21 @@ class LatexCodeModal(discord.ui.Modal):
         self,
         *,
         original_code: str = "",
-        dpi: int = DEFAULT_DPI,
         title: str = "Enter LaTeX Code",
     ):
         super().__init__(title=title)
         self.latex_input.default = original_code
-        self.dpi = dpi
 
     async def on_submit(self, interaction: discord.Interaction):
         await handle_latex_compilation(
-            interaction, self.latex_input.value, self.dpi, source="modal"
+            interaction, self.latex_input.value, source="modal"
         )
 
 
 class FixCodeView(discord.ui.View):
-    def __init__(self, latex_code: str, dpi: int):
+    def __init__(self, latex_code: str):
         super().__init__(timeout=None)
         self.latex_code = latex_code
-        self.dpi = dpi
 
     @discord.ui.button(label="Fix Code", style=discord.ButtonStyle.danger, emoji="🔧")
     async def fix_code_button(
@@ -461,14 +457,13 @@ class FixCodeView(discord.ui.View):
     ):
         modal = LatexCodeModal(
             original_code=self.latex_code,
-            dpi=self.dpi,
             title="Fix LaTeX Code",
         )
         await interaction.response.send_modal(modal)
 
 
 async def handle_latex_compilation(
-    interaction: discord.Interaction, latex_code: str, dpi: int, source: str = "modal"
+    interaction: discord.Interaction, latex_code: str, source: str = "modal"
 ):
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True)
@@ -482,8 +477,8 @@ async def handle_latex_compilation(
 
     try:
         output, duration_ms = await compile_queue.execute(
-            loop, text_to_latex, latex_code, unique_id, dpi,
-            notify_coro=notify_slash, timeout=15.0, user_id=interaction.user.id, source=source, dpi=dpi
+            loop, text_to_latex, latex_code, unique_id, DEFAULT_DPI,
+            notify_coro=notify_slash, timeout=15.0, user_id=interaction.user.id, source=source, dpi=DEFAULT_DPI
         )
         if output == "REJECTED":
             return
@@ -492,12 +487,12 @@ async def handle_latex_compilation(
             "LaTeX compile timeout user_id=%s request_id=%s dpi=%s",
             interaction.user.id,
             unique_id,
-            dpi,
+            DEFAULT_DPI,
         )
         _safe_record_latex_event(
             source=source,
             status="timeout",
-            dpi=dpi,
+            dpi=DEFAULT_DPI,
             user_id=interaction.user.id,
             error_message="LaTeX compilation timed out",
             latex_code=latex_code,
@@ -507,7 +502,7 @@ async def handle_latex_compilation(
             description="LaTeX compilation took too long. Please try again later or simplify your LaTeX code.",
             color=Color.red(),
         )
-        view = FixCodeView(latex_code, dpi)
+        view = FixCodeView(latex_code)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         return
     except Exception as exc:
@@ -515,12 +510,12 @@ async def handle_latex_compilation(
             "LaTeX compile internal error user_id=%s request_id=%s dpi=%s",
             interaction.user.id,
             unique_id,
-            dpi,
+            DEFAULT_DPI,
         )
         _safe_record_latex_event(
             source=source,
             status="internal_error",
-            dpi=dpi,
+            dpi=DEFAULT_DPI,
             user_id=interaction.user.id,
             error_message=str(exc),
             latex_code=latex_code,
@@ -530,7 +525,7 @@ async def handle_latex_compilation(
             description="Unexpected compile error. Please try again in a moment.",
             color=Color.red(),
         )
-        view = FixCodeView(latex_code, dpi)
+        view = FixCodeView(latex_code)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         return
 
@@ -543,7 +538,7 @@ async def handle_latex_compilation(
         _safe_record_latex_event(
             source=source,
             status="success",
-            dpi=dpi,
+            dpi=DEFAULT_DPI,
             user_id=interaction.user.id,
             duration_ms=duration_ms,
         )
@@ -569,7 +564,7 @@ async def handle_latex_compilation(
         _safe_record_latex_event(
             source=source,
             status="compile_error",
-            dpi=dpi,
+            dpi=DEFAULT_DPI,
             user_id=interaction.user.id,
             error_message=str(output),
             duration_ms=duration_ms,
@@ -580,7 +575,7 @@ async def handle_latex_compilation(
             description=_format_compile_error_description(str(output)),
             color=Color.red(),
         )
-        view = FixCodeView(latex_code, dpi)
+        view = FixCodeView(latex_code)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         return
 
@@ -601,7 +596,7 @@ async def ping(interaction: discord.Interaction):
 @app_commands.allowed_installs(guilds=True, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 async def latex(interaction: discord.Interaction):
-    await interaction.response.send_modal(LatexCodeModal(dpi=DEFAULT_DPI))
+    await interaction.response.send_modal(LatexCodeModal())
 
 
 @bot.tree.command(
@@ -614,7 +609,6 @@ async def latex_inline(interaction: discord.Interaction, latex_code: str):
     await handle_latex_compilation(
         interaction,
         latex_code,
-        DEFAULT_DPI,
         source="inline",
     )
 

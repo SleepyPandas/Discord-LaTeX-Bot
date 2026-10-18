@@ -8,8 +8,10 @@ _logger = logging.getLogger(__name__)
 _UNKNOWN_COMPILE_ERROR = (
     "LaTeX syntax error: this code is incomplete or unsupported in this renderer."
 )
+
 MAX_LATEX_INPUT_CHARS = 4000
-MAX_RENDER_DPI = 800
+MAX_RENDER_DPI = 300
+
 _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
 _STRUCTURED_STANDALONE_ENV_RE = re.compile(
     r"\\begin\{(?:tikzpicture|tikzcd|circuitikz|pgfpicture|axis)\}"
@@ -662,7 +664,7 @@ def text_to_latex(expr: str, output_file: str, dpi=300) -> bool | str:
     Attributes:
      expr: str
      output_file: str
-     dpi=(1000 , optional) int | sets resolution
+     dpi=(300 , optional) int | sets resolution
     """
 
     # Interaction input is LaTeX source, not a message command. Keep it intact
