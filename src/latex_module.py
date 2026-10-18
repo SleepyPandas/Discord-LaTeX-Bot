@@ -8,7 +8,7 @@ _logger = logging.getLogger(__name__)
 _UNKNOWN_COMPILE_ERROR = (
     "LaTeX syntax error: this code is incomplete or unsupported in this renderer."
 )
-MAX_LATEX_INPUT_CHARS = 3000
+MAX_LATEX_INPUT_CHARS = 4000
 MAX_RENDER_DPI = 800
 _COMPILER_LOG_PREFIX = "Compilation failed with error logs:"
 _STRUCTURED_STANDALONE_ENV_RE = re.compile(
