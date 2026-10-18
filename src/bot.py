@@ -428,8 +428,6 @@ class LatexCodeModal(discord.ui.Modal):
         style=discord.TextStyle.long,
         placeholder="Enter your LaTeX code here...",
         required=True,
-        # Keep the renderer limit at 3000, but allow the modal to submit
-        # slightly more so the backend can return a friendly size error.
         max_length=DISCORD_MODAL_LATEX_INPUT_CHARS,
     )
 

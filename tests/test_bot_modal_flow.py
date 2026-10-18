@@ -30,7 +30,7 @@ def _install_bot_import_stubs() -> None:
 
     latex_module_stub = types.ModuleType("latex_module")
     latex_module_stub.text_to_latex = lambda *args, **kwargs: True
-    latex_module_stub.MAX_LATEX_INPUT_CHARS = 3000
+    latex_module_stub.MAX_LATEX_INPUT_CHARS = 4000
 
     metrics_store_module = types.ModuleType("metrics_store")
     metrics_store_module.init_metrics_db = lambda *args, **kwargs: None

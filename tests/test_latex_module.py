@@ -636,7 +636,7 @@ class LatexModuleTestCase(unittest.TestCase):
             "Try removing unsupported \\usepackage lines.",
         )
 
-    def test_text_to_latex_rejects_input_over_3000_chars(self):
+    def test_text_to_latex_rejects_input_over_4000_chars(self):
         result = latex_module.text_to_latex(
             "x" * (latex_module.MAX_LATEX_INPUT_CHARS + 1),
             "unused_output",
@@ -644,7 +644,7 @@ class LatexModuleTestCase(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Input too long: 3001 characters. Max is 3000 characters.",
+            "Input too long: 4001 characters. Max is 4000 characters.",
         )
 
     def test_text_to_latex_counts_literal_latex_prefix_toward_input_limit(self):
@@ -655,7 +655,7 @@ class LatexModuleTestCase(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Input too long: 3006 characters. Max is 3000 characters.",
+            "Input too long: 4006 characters. Max is 4000 characters.",
         )
 
     def test_text_to_latex_surfaces_truncated_tikz_documents_as_length_errors(self):
@@ -673,7 +673,7 @@ class LatexModuleTestCase(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Input too long: TikZ document exceeded the 3000 character limit and was truncated.",
+            "Input too long: TikZ document exceeded the 4000 character limit and was truncated.",
         )
 
     def test_text_to_latex_returns_friendly_missing_brace_error_before_compile(self):
