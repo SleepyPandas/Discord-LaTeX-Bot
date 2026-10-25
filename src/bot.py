@@ -11,7 +11,7 @@ import uuid
 from aiohttp import web
 from discord import app_commands, Color
 
-__version__ = "2.5.3"
+__version__ = "2.6.0"
 
 
 def _read_int_env(
@@ -735,6 +735,7 @@ async def help(interaction: discord.Interaction):
     embed.add_field(
         name="Tips",
         value=(
+            "• Click the ✏️ Edit button on any render to view or tweak its LaTeX code.\n"
             "• There will be an attemped auto-wrap for missing delimiters.\n"
             "• Press the up arrow key (↑) in chat to recall a previous message.\n"
             "• Display math environments like align*, gather*, multline* and "

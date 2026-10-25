@@ -3,6 +3,39 @@
 All notable changes to this project are documented in this file.
 
 
+## [V2.6.0] [Edit Successful Renders, Standardized 300 DPI & 4000-Char Limit, AI Chat Removal] - 2026-10-25
+
+### Highlights
+
+- Added a persistent `✏️ Edit` button (`EditRenderView`) to all successful LaTeX renders, allowing users to re-open the modal pre-filled with that message's LaTeX code even across bot restarts.
+- Standardized compilation resolution to `300` DPI across all render flows (`DEFAULT_DPI = 300`, `MAX_RENDER_DPI = 300`) and increased the maximum LaTeX input length to `4000` characters (`MAX_LATEX_INPUT_CHARS = 4000`) to match Discord's modal limit.
+- Added a 5-minute in-memory cache expiry (`EDIT_RENDER_VIEW_CACHE_TIMEOUT_SECONDS = 300.0`) on per-message `EditRenderView` instances so `discord.py` automatically evicts old views from RAM and falls back to the persistent SQLite-backed view listener.
+- Updated the monitoring dashboard's Recent Compile Events table (`Error / LaTeX` column) to visually distinguish compilation/runtime errors (`Error` badge pill and danger-tinted summary) from successful LaTeX source previews.
+- Removed the unused `/talk-to-me` and `/clear-history` Gemini AI commands, `src/AIAPI.py`, and the deprecated `google-generativeai` dependency.
+
+### Added
+
+- `EditRenderView` in `src/bot.py` registered persistently in `LatexBot.setup_hook` (`custom_id="edit_latex_render"`).
+- `message_id` column, `idx_latex_events_message_id` index, automatic schema migration, and `get_render_by_message_id()` lookup in `src/metrics_store.py`.
+- `.error-indicator-pill`, `.is-error-detail`, and `.is-code-only` styles in `monitoring/dashboard/static/style.css` and `monitoring/dashboard/templates/index.html`.
+- Unit tests in `tests/test_bot_modal_flow.py` and `tests/test_metrics_store.py` covering `EditRenderView` modal prefilling, view cache timeouts, and `message_id` persistence.
+
+### Changed
+
+- `src/bot.py`: Bumped `__version__` to `2.6.0`, attached `EditRenderView` to successful renders, standardized on `DEFAULT_DPI = 300`, and updated `/help` command list and tips.
+- `src/latex_module.py`: Increased `MAX_LATEX_INPUT_CHARS` from `3000` to `4000` and set `MAX_RENDER_DPI` to `300`.
+- `src/requirements.txt`: Upgraded `Pillow` from `12.3.0` to `13.0.0` and removed `google-generativeai==0.8.6`.
+- `README.md` & `src/.env.example`: Updated feature descriptions, usage notes, command tables, and environment variable examples.
+
+### Removed
+
+- `/talk-to-me` (`ai_chat`) and `/clear-history` (`clear_history`) slash commands in `src/bot.py`.
+- `src/AIAPI.py` module and `google-generativeai` package dependency.
+
+
+---
+
+
 ## [V2.5.3] [TeX Log Unwrapping & Multi-Line Error Context Snippets] [LaTeX Error Log Normalization & Type Safety Fixes] - 2026-09-15
 
 ### Highlights
