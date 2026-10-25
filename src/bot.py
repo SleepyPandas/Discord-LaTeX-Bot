@@ -674,6 +674,8 @@ async def help(interaction: discord.Interaction):
         value=(
             "• There will be an attemped auto-wrap for missing delimiters.\n"
             "• Press the up arrow key (↑) in chat to recall a previous message.\n"
+            "• Display math environments like align*, gather*, multline* and "
+            "equation* work directly - no delimiters needed.\n"
             "• A preamble is only needed for TikZ or specialized packages; "
             "standard math packages are loaded by default."
         ),
@@ -683,8 +685,8 @@ async def help(interaction: discord.Interaction):
     embed.add_field(
         name="Coming Soon & Requests",
         value=(
-            "Active updates are in progress! Upcoming releases will add more LaTeX packages, "
-            "expanded display math environments (like align*) and more!\n\n"
+            "Active updates are in progress! Upcoming releases will add more LaTeX packages "
+            "and more!\n\n"
             "Have a package request or feature idea? Click Feedback & Requests below!"
         ),
         inline=False,
