@@ -28,7 +28,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 - Works in servers, DMs, and private channels
 - Uses timeout guards during rendering
 - Local monitoring dashboard with selectable windows (`24h`, `7d`, `30d`, `90d`) and trend charts
-- Button to Edit Code Instead of retyping on Error
+- Interactive buttons to edit successful renders or fix code on error without retyping
 <img width="650" height="175" alt="image" src="https://github.com/user-attachments/assets/75f48881-2fa7-4188-ba98-ac04fbadacff" />
 
 
@@ -195,7 +195,8 @@ python -m unittest tests.test_bot_modal_flow
 - If you include a full `\documentclass ...` block, the bot treats it as a document render path.
 - If you submit plain math without delimiters, the bot auto-wraps it as `\[...\]`.
 - Existing delimiters such as `$...$`, `$$...$$`, and `\[...\]` are still accepted.
-- The modal-first flow uses the default render DPI of `300`.
+- Rendered equations include an **Edit** button (`✏️`) that re-opens the LaTeX modal pre-filled with that message's source code.
+- All renders use a standardized resolution of `300` DPI and support up to `4000` characters.
 - Large requests and high DPI are constrained to protect responsiveness.
 
 ## Local Monitoring Dashboard
