@@ -35,6 +35,7 @@ def _install_bot_import_stubs() -> None:
     metrics_store_module = types.ModuleType("metrics_store")
     metrics_store_module.init_metrics_db = lambda *args, **kwargs: None
     metrics_store_module.record_latex_event = lambda *args, **kwargs: None
+    metrics_store_module.get_render_by_message_id = lambda *args, **kwargs: None
 
     aiapi_module = types.ModuleType("AIAPI")
     aiapi_module.create_chat_session = lambda *args, **kwargs: "stub"
@@ -62,8 +63,10 @@ def _install_bot_import_stubs() -> None:
             return self
 
     class DummyButtonStyle:
+        primary = "primary"
         danger = "danger"
         link = "link"
+        secondary = "secondary"
 
     class DummyTextStyle:
         long = "long"
@@ -185,6 +188,12 @@ def _install_bot_import_stubs() -> None:
         async def setup_hook(self):
             return None
 
+        def add_view(self, view, **kwargs):
+            if not hasattr(self, "added_views"):
+                self.added_views = []
+            self.added_views.append(view)
+            return None
+
         async def close(self):
             return None
 
@@ -223,6 +232,7 @@ def _install_bot_import_stubs() -> None:
     discord_module.Embed = DummyEmbed
     discord_module.File = DummyFile
     discord_module.Interaction = object
+    discord_module.Message = object
     discord_module.app_commands = app_commands_module
 
     ext_module = types.ModuleType("discord.ext")
@@ -430,6 +440,86 @@ class BotModalFlowTestCase(unittest.TestCase):
             user_id=888,
             error_message="LaTeX compilation timed out",
             latex_code=r"\huge \int",
+        )
+
+    def test_handle_latex_compilation_attaches_edit_render_view_and_records_message_id(self):
+        sent_message = SimpleNamespace(id=424242)
+        interaction = SimpleNamespace(
+            response=SimpleNamespace(is_done=lambda: True, defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock(return_value=sent_message)),
+            user=SimpleNamespace(id=555),
+        )
+        with patch.object(
+            self.bot.compile_queue,
+            "execute",
+            new=AsyncMock(return_value=(True, 85)),
+        ), patch.object(
+            self.bot, "_safe_record_latex_event"
+        ) as mock_record, patch.object(self.bot.os, "remove"):
+            asyncio.run(
+                self.bot.handle_latex_compilation(
+                    interaction, r"\frac{a}{b}", source="modal"
+                )
+            )
+
+        interaction.followup.send.assert_awaited_once()
+        send_kwargs = interaction.followup.send.await_args.kwargs
+        self.assertIsInstance(send_kwargs["view"], self.bot.EditRenderView)
+        self.assertEqual(send_kwargs["view"].latex_code, r"\frac{a}{b}")
+        self.assertEqual(send_kwargs["view"].author_id, 555)
+        self.assertTrue(send_kwargs["wait"])
+        mock_record.assert_called_once_with(
+            source="modal",
+            status="success",
+            dpi=300,
+            user_id=555,
+            duration_ms=85,
+            latex_code=r"\frac{a}{b}",
+            message_id=424242,
+        )
+
+    def test_edit_render_button_opens_prefilled_modal(self):
+        message = SimpleNamespace(id=12345)
+        interaction = SimpleNamespace(
+            user=SimpleNamespace(id=555),
+            message=message,
+            response=SimpleNamespace(send_modal=AsyncMock(), send_message=AsyncMock()),
+        )
+        view = self.bot.EditRenderView()
+
+        with patch.object(
+            self.bot,
+            "get_render_by_message_id",
+            return_value={
+                "latex_code": r"\sum_{i=1}^n i",
+                "user_id": "555",
+                "message_id": "12345",
+            },
+        ):
+            asyncio.run(view.edit_render_button(interaction, object()))
+
+        interaction.response.send_modal.assert_awaited_once()
+        modal = interaction.response.send_modal.await_args.args[0]
+        self.assertIsInstance(modal, self.bot.LatexCodeModal)
+        self.assertEqual(modal.title, "Edit LaTeX Code")
+        self.assertEqual(modal.latex_input.default, r"\sum_{i=1}^n i")
+
+    def test_edit_render_button_sends_ephemeral_notice_when_source_unavailable(self):
+        message = SimpleNamespace(id=99999)
+        interaction = SimpleNamespace(
+            user=SimpleNamespace(id=555),
+            message=message,
+            response=SimpleNamespace(send_modal=AsyncMock(), send_message=AsyncMock()),
+        )
+        view = self.bot.EditRenderView()
+
+        with patch.object(self.bot, "get_render_by_message_id", return_value=None):
+            asyncio.run(view.edit_render_button(interaction, object()))
+
+        interaction.response.send_modal.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once_with(
+            "Could not find LaTeX source for this message.",
+            ephemeral=True,
         )
 
     def test_help_command_sends_embed_and_link_buttons(self):

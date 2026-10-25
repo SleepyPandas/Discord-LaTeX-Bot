@@ -187,6 +187,52 @@ class MetricsStoreTestCase(unittest.TestCase):
                 for row in conn.execute("PRAGMA table_info(latex_events);").fetchall()
             }
         self.assertIn("latex_code", columns)
+        self.assertIn("message_id", columns)
+
+    def test_get_render_by_message_id_returns_latest_successful_render(self):
+        metrics_store.init_metrics_db(self.db_path)
+        metrics_store.record_latex_event(
+            db_path=self.db_path,
+            source="modal",
+            status="success",
+            dpi=300,
+            user_id=777,
+            duration_ms=100,
+            latex_code=r"\frac{1}{2}",
+            message_id=55555,
+        )
+        metrics_store.record_latex_event(
+            db_path=self.db_path,
+            source="modal",
+            status="compile_error",
+            dpi=300,
+            user_id=777,
+            error_message="Syntax error",
+            duration_ms=40,
+            latex_code=r"\frac{1}{",
+            message_id=55555,
+        )
+        metrics_store.record_latex_event(
+            db_path=self.db_path,
+            source="modal",
+            status="success",
+            dpi=300,
+            user_id=777,
+            duration_ms=110,
+            latex_code=r"\frac{3}{4}",
+            message_id=55555,
+        )
+
+        render_info = metrics_store.get_render_by_message_id(self.db_path, 55555)
+        self.assertEqual(
+            render_info,
+            {
+                "latex_code": r"\frac{3}{4}",
+                "user_id": "777",
+                "message_id": "55555",
+            },
+        )
+        self.assertIsNone(metrics_store.get_render_by_message_id(self.db_path, 99999))
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 
 _VALID_STATUSES = {"success", "timeout", "compile_error", "internal_error", "queued", "rejected"}
@@ -152,7 +153,8 @@ def init_metrics_db(db_path: str) -> None:
                 user_id TEXT,
                 error_message TEXT,
                 duration_ms INTEGER,
-                latex_code TEXT
+                latex_code TEXT,
+                message_id TEXT
             );
             """
         )
@@ -164,6 +166,8 @@ def init_metrics_db(db_path: str) -> None:
             conn.execute("ALTER TABLE latex_events ADD COLUMN duration_ms INTEGER;")
         if "latex_code" not in existing_columns:
             conn.execute("ALTER TABLE latex_events ADD COLUMN latex_code TEXT;")
+        if "message_id" not in existing_columns:
+            conn.execute("ALTER TABLE latex_events ADD COLUMN message_id TEXT;")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_latex_events_created_at ON latex_events(created_at);"
         )
@@ -178,6 +182,9 @@ def init_metrics_db(db_path: str) -> None:
             CREATE INDEX IF NOT EXISTS idx_latex_events_created_at_source
             ON latex_events(created_at, source);
             """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_latex_events_message_id ON latex_events(message_id);"
         )
         conn.commit()
 
@@ -196,6 +203,7 @@ def record_latex_event(
     error_message: str | None = None,
     duration_ms: int | None = None,
     latex_code: str | None = None,
+    message_id: int | str | None = None,
 ) -> None:
     if status not in _VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}'")
@@ -208,11 +216,17 @@ def record_latex_event(
     if latex_code is not None:
         normalized_latex_code = (latex_code or "")[:4000] or None
 
+    normalized_message_id: str | None = None
+    if message_id is not None:
+        normalized_message_id = str(message_id).strip() or None
+
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO latex_events (created_at, source, status, dpi, user_id, error_message, duration_ms, latex_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            INSERT INTO latex_events (
+                created_at, source, status, dpi, user_id, error_message, duration_ms, latex_code, message_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 _utc_now_iso(),
@@ -223,6 +237,7 @@ def record_latex_event(
                 (error_message or "")[:500] or None,
                 normalized_duration_ms,
                 normalized_latex_code,
+                normalized_message_id,
             ),
         )
         conn.commit()
@@ -234,3 +249,44 @@ def record_latex_event(
         _run_metrics_maintenance(db_path)
     except sqlite3.Error:
         _LOGGER.exception("Metrics maintenance failed during event write path=%s", db_path)
+
+
+def get_render_by_message_id(
+    db_path: str,
+    message_id: int | str,
+) -> dict[str, Any] | None:
+    normalized_message_id = str(message_id).strip()
+    if not normalized_message_id:
+        return None
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT latex_code, user_id, message_id
+                FROM latex_events
+                WHERE message_id = ?
+                  AND status = 'success'
+                  AND latex_code IS NOT NULL
+                ORDER BY id DESC
+                LIMIT 1;
+                """,
+                (normalized_message_id,),
+            ).fetchone()
+    except sqlite3.Error:
+        _LOGGER.exception(
+            "Failed to look up render by message_id=%s path=%s",
+            normalized_message_id,
+            db_path,
+        )
+        return None
+
+    if row is None:
+        return None
+
+    return {
+        "latex_code": row["latex_code"],
+        "user_id": row["user_id"],
+        "message_id": row["message_id"],
+    }
