@@ -26,9 +26,8 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 - `/latex` opens a modal where users can type or paste LaTeX, then renders a PNG
 - Supports inline expressions and full-document/TikZ workflows
 - Works in servers, DMs, and private channels
-- Uses timeout guards during rendering and AI responses
+- Uses timeout guards during rendering
 - Local monitoring dashboard with selectable windows (`24h`, `7d`, `30d`, `90d`) and trend charts
-- Optional `/talk-to-me` command powered by Google's Gemini ecosystem
 - Button to Edit Code Instead of retyping on Error
 <img width="650" height="175" alt="image" src="https://github.com/user-attachments/assets/75f48881-2fa7-4188-ba98-ac04fbadacff" />
 
@@ -36,7 +35,7 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 ## Technical Highlights
 
 - **Async**: commands run with `asyncio`, and compilation is offloaded via `ThreadPoolExecutor` so the event loop stays responsive.
-- **Timeout safety**: rendering and AI calls are wrapped with `asyncio.wait_for` to prevent long-running requests from blocking users.
+- **Timeout safety**: rendering calls are wrapped with `asyncio.wait_for` to prevent long-running requests from blocking users.
 - **Container-friendly logging**: configurable `LOG_LEVEL`, stdout output, and compose log rotation support.
 - **Persistent metrics**: LaTeX compile outcomes are stored in SQLite and visualized in a separate local dashboard service.
 - **Linux / Dockerized deployment**: Designed to be deployed on Linux based systems.
@@ -58,8 +57,6 @@ I wanted a tool that could render LateX in DMs and on Servers. Addtionally I wan
 | `/latex-inline <latex_code>` | Render single-line LaTeX directly from the slash command input. |
 | `/help` | Show command and usage guidance. |
 | `/ping` | Health check command. |
-| `/talk-to-me <message>` | Optional conversational command (requires Gemini token). |
-| `/clear-history` | Clear chat history used by `/talk-to-me`. |
 
 ## Invite Links
 
@@ -116,11 +113,6 @@ Run `/latex`, then paste:
 
 ```env
 DISCORD_TOKEN=your_token_here
-
-# Optional: GEMINI_TOKEN=your_token_here
-
-# Optional: used as persistent instruction context for chat responses
-SYSTEM_INSTRUCTION=your_system_instruction_here
 
 # Optional: controls Python logging level
 LOG_LEVEL=INFO

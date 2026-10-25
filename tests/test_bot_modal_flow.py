@@ -14,14 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
 def _install_bot_import_stubs() -> None:
-    google_module = types.ModuleType("google")
-    generativeai_module = types.ModuleType("google.generativeai")
-    types_module = types.ModuleType("google.generativeai.types")
-    generation_types_module = types.ModuleType("google.generativeai.types.generation_types")
-    generation_types_module.StopCandidateException = type(
-        "StopCandidateException", (Exception,), {}
-    )
-
     dotenv_module = types.ModuleType("dotenv")
     dotenv_module.load_dotenv = lambda: None
 
@@ -36,10 +28,6 @@ def _install_bot_import_stubs() -> None:
     metrics_store_module.init_metrics_db = lambda *args, **kwargs: None
     metrics_store_module.record_latex_event = lambda *args, **kwargs: None
     metrics_store_module.get_render_by_message_id = lambda *args, **kwargs: None
-
-    aiapi_module = types.ModuleType("AIAPI")
-    aiapi_module.create_chat_session = lambda *args, **kwargs: "stub"
-    aiapi_module.reset_history = lambda *args, **kwargs: "cleared"
 
     discord_module = types.ModuleType("discord")
 
@@ -241,15 +229,10 @@ def _install_bot_import_stubs() -> None:
     commands_module.Bot = DummyBot
     tasks_module.loop = dummy_loop
 
-    sys.modules["google"] = google_module
-    sys.modules["google.generativeai"] = generativeai_module
-    sys.modules["google.generativeai.types"] = types_module
-    sys.modules["google.generativeai.types.generation_types"] = generation_types_module
     sys.modules["dotenv"] = dotenv_module
     sys.modules["logging_config"] = logging_config_module
     sys.modules["latex_module"] = latex_module_stub
     sys.modules["metrics_store"] = metrics_store_module
-    sys.modules["AIAPI"] = aiapi_module
     sys.modules["discord"] = discord_module
     sys.modules["discord.ext"] = ext_module
     sys.modules["discord.ext.commands"] = commands_module

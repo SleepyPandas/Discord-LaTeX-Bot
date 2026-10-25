@@ -4,8 +4,6 @@ import os
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-from google.generativeai.types.generation_types import StopCandidateException
-
 import time
 import aiohttp
 import discord
@@ -135,8 +133,6 @@ from metrics_store import get_render_by_message_id, init_metrics_db, record_late
 from stats import get_manual_users_count, update_stats
 
 from dotenv import load_dotenv
-
-from AIAPI import create_chat_session, reset_history
 
 load_dotenv()
 configure_logging()
@@ -728,7 +724,6 @@ async def help(interaction: discord.Interaction):
         "/help                         help and info guide\n\n"
         "/latex                        LaTeX editor modal\n\n"
         "/latex-inline                 Single-line slash LaTeX\n\n"
-        "/talk-to-me                   Talk to me\n\n"
         "/ping                         See if I'm awake!\n"
         "```",
         inline=False,
@@ -767,93 +762,6 @@ async def help(interaction: discord.Interaction):
     )
     _log_command_success(user_id=interaction.user.id, command="help", source="slash")
 
-
-# =========AI======== Features
-#
-@bot.tree.command(name="talk-to-me", description="LaTeX Bot Sentience")
-@app_commands.allowed_installs(guilds=True, users=True)
-@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-async def ai_chat(interaction: discord.Interaction, user_message: str):
-    # noinspection PyUnresolvedReferences
-    await interaction.response.defer(thinking=True)
-
-    loop = asyncio.get_running_loop()
-    user_id = interaction.user.id
-
-    try:
-        output = await asyncio.wait_for(
-            loop.run_in_executor(executor, create_chat_session, user_message, user_id),
-            timeout=15.0,
-        )
-
-    except asyncio.TimeoutError:
-        logger.warning("AI timeout user_id=%s", user_id)
-        embed = discord.Embed(
-            title="Timeout Error",
-            description="AI response took too long. Please try again.",
-            color=discord.Color.red(),
-        )
-        # Don't let a followup failure keep this coroutine hanging.
-        await asyncio.wait_for(
-            interaction.followup.send(embed=embed, ephemeral=True), timeout=5.0
-        )
-        return
-
-    except StopCandidateException as e:
-        logger.warning("AI safety filters triggered user_id=%s err=%s", user_id, e)
-        # Handle safety exceptions (like when the safety filters trigger).
-        embed = discord.Embed(
-            title="Safety Exception",
-            description=f"Safety filters triggered",
-            color=discord.Color.red(),
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-        return
-
-    if output == "History cleared":
-        embed = discord.Embed(
-            color=discord.Color.red(),
-            title="Memory Automatically cleared - My Memory is Full!",
-        )
-        await interaction.followup.send(embed=embed)
-        _log_command_success(
-            user_id=user_id,
-            command="talk-to-me",
-            source="slash",
-            detail="history_auto_cleared",
-        )
-        return
-
-    embed = discord.Embed(
-        title="Response" + ":woman_with_probing_cane: ",
-        color=discord.Color.green(),
-        description=output[:4096],
-    ).set_author(name="LaTeX Bot")
-
-    # 1024 is Max limit
-
-    embed.add_field(name="Message", value=user_message[:1024], inline=False)
-
-    await interaction.followup.send(embed=embed)
-    _log_command_success(user_id=user_id, command="talk-to-me", source="slash")
-
-
-@bot.tree.command(name="clear-history", description="clears chat history")
-@app_commands.allowed_installs(guilds=True, users=True)
-@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-async def clear_history(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    embed = discord.Embed(
-        color=discord.Color.red(),
-        title=reset_history(user_id),
-    )
-    # noinspection PyUnresolvedReferences
-    await interaction.response.send_message(embed=embed)
-    _log_command_success(
-        user_id=user_id,
-        command="clear-history",
-        source="slash",
-    )
 
 if __name__ == "__main__":
     token = os.getenv("DISCORD_TOKEN")
