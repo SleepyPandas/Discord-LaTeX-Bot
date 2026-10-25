@@ -465,12 +465,19 @@ class FixCodeView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
 
+EDIT_RENDER_VIEW_CACHE_TIMEOUT_SECONDS = 300.0
+
+
 class EditRenderView(discord.ui.View):
     def __init__(
         self,
         latex_code: str | None = None,
     ):
-        super().__init__(timeout=None)
+        super().__init__(
+            timeout=None
+            if latex_code is None
+            else EDIT_RENDER_VIEW_CACHE_TIMEOUT_SECONDS
+        )
         self.latex_code = latex_code
 
     @discord.ui.button(
@@ -482,22 +489,20 @@ class EditRenderView(discord.ui.View):
     async def edit_render_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        message = getattr(interaction, "message", None)
-        render_info = None
-        if message is not None and getattr(message, "id", None) is not None:
-            try:
-                render_info = get_render_by_message_id(METRICS_DB_PATH, message.id)
-            except Exception:
-                logger.exception(
-                    "Failed to load render info for message_id=%s",
-                    getattr(message, "id", None),
-                )
-
-        latex_code = (
-            render_info.get("latex_code")
-            if render_info and render_info.get("latex_code")
-            else self.latex_code
-        )
+        latex_code = self.latex_code
+        if not latex_code:
+            message = getattr(interaction, "message", None)
+            render_info = None
+            if message is not None and getattr(message, "id", None) is not None:
+                try:
+                    render_info = get_render_by_message_id(METRICS_DB_PATH, message.id)
+                except Exception:
+                    logger.exception(
+                        "Failed to load render info for message_id=%s",
+                        getattr(message, "id", None),
+                    )
+            if render_info and render_info.get("latex_code"):
+                latex_code = render_info.get("latex_code")
 
         if not latex_code:
             await interaction.response.send_message(
