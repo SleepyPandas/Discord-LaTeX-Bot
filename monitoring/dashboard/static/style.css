@@ -406,6 +406,18 @@ th {
   transition: color 0.15s ease;
 }
 
+.error-indicator-pill {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(248, 81, 73, 0.16);
+  color: var(--danger);
+  border: 1px solid rgba(248, 81, 73, 0.45);
+  font-weight: 600;
+  flex-shrink: 0;
+  line-height: 1.3;
+}
+
 .code-indicator-pill {
   font-size: 10px;
   padding: 1px 5px;
@@ -416,6 +428,16 @@ th {
   font-weight: 500;
   flex-shrink: 0;
   line-height: 1.3;
+}
+
+.error-cell.is-error-detail .error-summary-text {
+  color: #ff9b93;
+}
+
+.error-cell.is-code-only .error-summary-text {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
 }
 
 .expand-toggle-icon {
