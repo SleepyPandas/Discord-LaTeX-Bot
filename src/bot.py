@@ -129,7 +129,7 @@ def _format_compile_error_description(message: str) -> str:
 from discord.ext import commands, tasks
 from latex_module import *
 from logging_config import configure_logging
-from metrics_store import init_metrics_db, record_latex_event
+from metrics_store import get_render_by_message_id, init_metrics_db, record_latex_event
 from stats import get_manual_users_count, update_stats
 
 from dotenv import load_dotenv
@@ -159,6 +159,7 @@ def _safe_record_latex_event(
     error_message: str | None = None,
     duration_ms: int | None = None,
     latex_code: str | None = None,
+    message_id: int | str | None = None,
 ) -> None:
     try:
         record_latex_event(
@@ -170,6 +171,7 @@ def _safe_record_latex_event(
             error_message=error_message,
             duration_ms=duration_ms,
             latex_code=latex_code,
+            message_id=message_id,
         )
     except Exception:
         logger.exception(
@@ -235,6 +237,7 @@ class LatexBot(commands.Bot):
 
     async def setup_hook(self):
         await super().setup_hook()
+        self.add_view(EditRenderView())
         await self.start_health_server()
 
     async def start_health_server(self):
@@ -458,8 +461,60 @@ class FixCodeView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
 
+class EditRenderView(discord.ui.View):
+    def __init__(
+        self,
+        latex_code: str | None = None,
+        author_id: int | None = None,
+    ):
+        super().__init__(timeout=None)
+        self.latex_code = latex_code
+        self.author_id = author_id
+
+    @discord.ui.button(
+        label="Edit",
+        style=discord.ButtonStyle.secondary,
+        emoji="✏️",
+        custom_id="edit_latex_render",
+    )
+    async def edit_render_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        message = getattr(interaction, "message", None)
+        render_info = None
+        if message is not None and getattr(message, "id", None) is not None:
+            try:
+                render_info = get_render_by_message_id(METRICS_DB_PATH, message.id)
+            except Exception:
+                logger.exception(
+                    "Failed to load render info for message_id=%s",
+                    getattr(message, "id", None),
+                )
+
+        latex_code = (
+            render_info.get("latex_code")
+            if render_info and render_info.get("latex_code")
+            else self.latex_code
+        )
+
+        if not latex_code:
+            await interaction.response.send_message(
+                "Could not find LaTeX source for this message.",
+                ephemeral=True,
+            )
+            return
+
+        modal = LatexCodeModal(
+            original_code=latex_code,
+            title="Edit LaTeX Code",
+        )
+        await interaction.response.send_modal(modal)
+
+
 async def handle_latex_compilation(
-    interaction: discord.Interaction, latex_code: str, source: str = "modal"
+    interaction: discord.Interaction,
+    latex_code: str,
+    source: str = "modal",
 ):
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True)
@@ -531,17 +586,27 @@ async def handle_latex_compilation(
             interaction.user.id,
             unique_id,
         )
+        file = discord.File(f"{unique_id}.png", filename=f"{unique_id}.png")
+        embed = discord.Embed(color=Color.blue())
+        embed.set_image(url=f"attachment://{unique_id}.png")
+        edit_view = EditRenderView(latex_code, interaction.user.id)
+        sent_msg = await interaction.followup.send(
+            embed=embed,
+            file=file,
+            view=edit_view,
+            wait=True,
+        )
+        resolved_message_id = getattr(sent_msg, "id", None)
+
         _safe_record_latex_event(
             source=source,
             status="success",
             dpi=DEFAULT_DPI,
             user_id=interaction.user.id,
             duration_ms=duration_ms,
+            latex_code=latex_code,
+            message_id=resolved_message_id,
         )
-        file = discord.File(f"{unique_id}.png", filename=f"{unique_id}.png")
-        embed = discord.Embed(color=Color.blue())
-        embed.set_image(url=f"attachment://{unique_id}.png")
-        await interaction.followup.send(embed=embed, file=file)
         _log_command_success(
             user_id=interaction.user.id,
             command="latex",
