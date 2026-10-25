@@ -190,7 +190,7 @@
                 <th>Status</th>
                 <th>DPI</th>
                 <th>User ID</th>
-                <th>Error</th>
+                <th>Error / LaTeX</th>
               </tr>
             </thead>
             <tbody id="events-body">
@@ -592,14 +592,22 @@
         const isExpandable = hasError || hasCode;
 
         let errorHtml = '<span class="empty">-</span>';
+        let cellToneClass = "";
         if (isExpandable) {
-          const displaySummary = event.error_message || (hasCode ? "Submitted LaTeX" : "Error");
+          const singleLineCode = hasCode
+            ? String(event.latex_code).replace(/\s+/g, " ").trim()
+            : "";
+          const displaySummary = hasError
+            ? event.error_message
+            : (singleLineCode || "Submitted LaTeX");
+          cellToneClass = hasError ? "is-error-detail" : "is-code-only";
           errorHtml = `
             <div class="error-cell-inner">
               <div class="error-summary">
                 <span class="expand-toggle-icon">▶</span>
-                <span class="error-summary-text" title="${escapeHtml(displaySummary)}">${escapeHtml(displaySummary)}</span>
+                ${hasError ? '<span class="error-indicator-pill" title="Compilation or runtime error">Error</span>' : ''}
                 ${hasCode ? '<span class="code-indicator-pill" title="Contains LaTeX input">LaTeX</span>' : ''}
+                <span class="error-summary-text" title="${escapeHtml(displaySummary)}">${escapeHtml(displaySummary)}</span>
               </div>
               <div class="error-detail-content">
                 ${hasError ? `<div class="error-full-msg">${escapeHtml(event.error_message)}</div>` : ''}
@@ -619,7 +627,7 @@
             <td>${badge(event.status)}</td>
             <td>${escapeHtml(event.dpi)}</td>
             <td>${escapeHtml(event.user_id)}</td>
-            <td class="error-cell ${isExpandable ? 'is-expandable' : ''}" ${isExpandable ? 'onclick="toggleErrorCell(event, this)" title="Click to expand/collapse"' : ''}>
+            <td class="error-cell ${isExpandable ? 'is-expandable' : ''} ${cellToneClass}" ${isExpandable ? 'onclick="toggleErrorCell(event, this)" title="Click to expand/collapse"' : ''}>
               ${errorHtml}
             </td>
           </tr>
