@@ -466,7 +466,6 @@ class BotModalFlowTestCase(unittest.TestCase):
         send_kwargs = interaction.followup.send.await_args.kwargs
         self.assertIsInstance(send_kwargs["view"], self.bot.EditRenderView)
         self.assertEqual(send_kwargs["view"].latex_code, r"\frac{a}{b}")
-        self.assertEqual(send_kwargs["view"].author_id, 555)
         self.assertTrue(send_kwargs["wait"])
         mock_record.assert_called_once_with(
             source="modal",

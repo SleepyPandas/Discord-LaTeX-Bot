@@ -469,11 +469,9 @@ class EditRenderView(discord.ui.View):
     def __init__(
         self,
         latex_code: str | None = None,
-        author_id: int | None = None,
     ):
         super().__init__(timeout=None)
         self.latex_code = latex_code
-        self.author_id = author_id
 
     @discord.ui.button(
         label="Edit",
@@ -593,7 +591,7 @@ async def handle_latex_compilation(
         file = discord.File(f"{unique_id}.png", filename=f"{unique_id}.png")
         embed = discord.Embed(color=Color.blue())
         embed.set_image(url=f"attachment://{unique_id}.png")
-        edit_view = EditRenderView(latex_code, interaction.user.id)
+        edit_view = EditRenderView(latex_code)
         sent_msg = await interaction.followup.send(
             embed=embed,
             file=file,
