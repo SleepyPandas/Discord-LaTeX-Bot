@@ -476,8 +476,8 @@ class EditRenderView(discord.ui.View):
         self.author_id = author_id
 
     @discord.ui.button(
-        label="Edit LaTeX",
-        style=discord.ButtonStyle.primary,
+        label="Edit",
+        style=discord.ButtonStyle.secondary,
         emoji="✏️",
         custom_id="edit_latex_render",
     )
